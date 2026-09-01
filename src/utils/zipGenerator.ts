@@ -7,10 +7,12 @@ export async function downloadProjectZip() {
   // Host folder
   const hostFolder = zip.folder('host');
   const windowsHost = CODE_FILES.find((f) => f.id === 'windows_host')?.content || '';
+  const dxgiCapture = CODE_FILES.find((f) => f.id === 'dxgi_capture')?.content || '';
   const reqs = CODE_FILES.find((f) => f.id === 'requirements')?.content || '';
   const bat = CODE_FILES.find((f) => f.id === 'batch_script')?.content || '';
 
   hostFolder?.file('windows_host.py', windowsHost);
+  hostFolder?.file('dxgi_capture.py', dxgiCapture);
   hostFolder?.file('requirements.txt', reqs);
   hostFolder?.file('run_host.bat', bat);
 
@@ -32,6 +34,11 @@ export async function downloadProjectZip() {
   const clientFolder = zip.folder('client');
   const clientHtml = CODE_FILES.find((f) => f.id === 'client_html')?.content || '';
   clientFolder?.file('index.html', clientHtml);
+
+  // GitHub Actions Workflow
+  const githubFolder = zip.folder('.github')?.folder('workflows');
+  const releaseYml = CODE_FILES.find((f) => f.id === 'release_workflow')?.content || '';
+  githubFolder?.file('release.yml', releaseYml);
 
   // Root README
   zip.file('README.md', `# WebRTC Low-Latency Remote Desktop for CAD

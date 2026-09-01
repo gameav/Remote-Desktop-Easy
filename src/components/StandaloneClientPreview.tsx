@@ -8,15 +8,20 @@ import {
   CornerUpLeft, 
   Settings,
   Activity,
-  MousePointer,
-  Sparkles
+  Keyboard as KeyboardIcon,
+  Sparkles,
+  Zap,
+  Sliders
 } from 'lucide-react';
 
 export const StandaloneClientPreview: React.FC = () => {
   const [activeMode, setActiveMode] = useState<'direct' | 'trackpad'>('direct');
   const [activeCadTool, setActiveCadTool] = useState<string | null>(null);
+  const [showKeyboardDrawer, setShowKeyboardDrawer] = useState<boolean>(false);
+  const [modifiers, setModifiers] = useState({ ctrl: false, shift: false, alt: false });
   const [touchPos, setTouchPos] = useState<{ x: number; y: number } | null>(null);
-  const [actionFeedback, setActionFeedback] = useState<string>('Connected to Windows Host');
+  const [actionFeedback, setActionFeedback] = useState<string>('Connected via WebRTC P2P');
+  const [simulatedAbrTier, setSimulatedAbrTier] = useState<string>('Ultra (1080p60)');
 
   const handleTouch = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -30,12 +35,26 @@ export const StandaloneClientPreview: React.FC = () => {
     if (activeCadTool === 'orbit') {
       setActionFeedback(`CAD Orbit Drag [${normX}, ${normY}] (MMB Active)`);
     } else if (activeCadTool === 'pan') {
-      setActionFeedback(`CAD Pan Drag [${normX}, ${normY}] (Shift+MMB)`);
+      setActionFeedback(`CAD Pan Drag [${normX}, ${normY}] (Shift+MMB Active)`);
     } else if (activeMode === 'direct') {
-      setActionFeedback(`Direct Touch Tap @ [${normX}, ${normY}] (Left Click)`);
+      setActionFeedback(`Direct Touch Tap @ [${normX}, ${normY}] (Win32 LeftClick)`);
     } else {
       setActionFeedback(`Virtual Trackpad Rel Vector [${x.toFixed(0)}px, ${y.toFixed(0)}px]`);
     }
+  };
+
+  const toggleModifier = (mod: 'ctrl' | 'shift' | 'alt') => {
+    setModifiers(prev => {
+      const next = { ...prev, [mod]: !prev[mod] };
+      setActionFeedback(`Modifier ${mod.toUpperCase()}: ${next[mod] ? 'LATCHED (ACTIVE)' : 'RELEASED'}`);
+      return next;
+    });
+  };
+
+  const sendKey = (keyName: string) => {
+    const mods = Object.entries(modifiers).filter(([_, v]) => v).map(([k]) => k.toUpperCase()).join('+');
+    const combo = mods ? `${mods}+${keyName}` : keyName;
+    setActionFeedback(`Dispatched Key: [${combo}] to Windows Host`);
   };
 
   return (
@@ -51,13 +70,13 @@ export const StandaloneClientPreview: React.FC = () => {
               iPhone Mobile Web Client Live Preview (iOS Safari Mockup)
             </h2>
             <p className="text-[11px] text-slate-400">
-              HTML5 WebRTC viewport with hardware-accelerated H.264 video decoding and low-latency gesture controls.
+              Complete single-file web client with full keyboard event listeners, on-screen CAD drawer, and real-time ABR telemetry.
             </p>
           </div>
         </div>
         <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 shadow-[0_0_10px_rgba(34,197,94,0.2)] flex items-center space-x-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#22c55e]" />
-          <span>Active DataChannel</span>
+          <span>Live DataChannel</span>
         </span>
       </div>
 
@@ -69,15 +88,15 @@ export const StandaloneClientPreview: React.FC = () => {
             <div className="w-2.5 h-2.5 rounded-full bg-slate-900 border border-white/10"></div>
           </div>
 
-          {/* Top HUD */}
+          {/* Top HUD with ABR Telemetry */}
           <div className="pt-10 px-4 flex items-center justify-between z-30 select-none">
             <div className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-xl border border-white/15 text-[11px] font-mono text-emerald-400 flex items-center space-x-1.5 shadow-md">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#22c55e] animate-pulse"></span>
               <span>14.2ms | 60 FPS</span>
             </div>
-            <div className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-xl border border-white/15 text-[11px] font-mono text-slate-300 flex items-center space-x-1 shadow-md">
-              <Settings className="w-3 h-3 text-slate-400" />
-              <span>Config</span>
+            <div className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-xl border border-white/15 text-[10px] font-mono text-blue-300 flex items-center space-x-1 shadow-md">
+              <Zap className="w-3 h-3 text-amber-400" />
+              <span>ABR: 18 Mbps</span>
             </div>
           </div>
 
@@ -91,14 +110,14 @@ export const StandaloneClientPreview: React.FC = () => {
 
             {/* Simulated 3D CAD Wireframe Geometry */}
             <div className="relative z-10 text-center space-y-2 p-4">
-              <div className="w-32 h-32 mx-auto border border-blue-400/40 rounded-3xl bg-blue-500/10 backdrop-blur-md flex items-center justify-center rotate-12 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse">
-                <Rotate3d className="w-12 h-12 text-blue-400" />
+              <div className="w-28 h-28 mx-auto border border-blue-400/40 rounded-3xl bg-blue-500/10 backdrop-blur-md flex items-center justify-center rotate-12 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse">
+                <Rotate3d className="w-10 h-10 text-blue-400" />
               </div>
               <div className="text-xs font-mono text-blue-300 font-bold tracking-wide">
-                Windows 10 CAD Desktop
+                Windows 10 Remote CAD
               </div>
               <div className="text-[10px] text-slate-400 max-w-[200px] leading-tight">
-                Tap anywhere to send touch coordinates to Windows host.
+                H.264 Hardware Decode &bull; Zero Lag DataChannel
               </div>
             </div>
 
@@ -114,6 +133,67 @@ export const StandaloneClientPreview: React.FC = () => {
             <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/15 text-[10px] font-mono text-slate-200 shadow-xl whitespace-nowrap">
               {actionFeedback}
             </div>
+
+            {/* On-Screen CAD Keyboard Drawer Overlay */}
+            {showKeyboardDrawer && (
+              <div className="absolute bottom-2 inset-x-2 bg-black/90 backdrop-blur-2xl border border-white/20 rounded-2xl p-2.5 z-40 space-y-2 shadow-2xl animate-in slide-in-from-bottom duration-200">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider font-mono">
+                    CAD Virtual Keyboard
+                  </span>
+                  <button
+                    onClick={() => setShowKeyboardDrawer(false)}
+                    className="text-[10px] text-slate-400 hover:text-white"
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+
+                {/* Modifiers row */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    onClick={() => toggleModifier('ctrl')}
+                    className={`py-1.5 rounded-lg text-[10px] font-mono font-bold border ${
+                      modifiers.ctrl ? 'bg-blue-500 text-white border-blue-400' : 'bg-white/10 text-slate-300 border-white/10'
+                    }`}
+                  >
+                    CTRL {modifiers.ctrl && '✓'}
+                  </button>
+                  <button
+                    onClick={() => toggleModifier('shift')}
+                    className={`py-1.5 rounded-lg text-[10px] font-mono font-bold border ${
+                      modifiers.shift ? 'bg-blue-500 text-white border-blue-400' : 'bg-white/10 text-slate-300 border-white/10'
+                    }`}
+                  >
+                    SHIFT {modifiers.shift && '✓'}
+                  </button>
+                  <button
+                    onClick={() => toggleModifier('alt')}
+                    className={`py-1.5 rounded-lg text-[10px] font-mono font-bold border ${
+                      modifiers.alt ? 'bg-blue-500 text-white border-blue-400' : 'bg-white/10 text-slate-300 border-white/10'
+                    }`}
+                  >
+                    ALT {modifiers.alt && '✓'}
+                  </button>
+                </div>
+
+                {/* Hotkeys row */}
+                <div className="grid grid-cols-5 gap-1">
+                  <button onClick={() => sendKey('Escape')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-slate-200 hover:bg-white/20">ESC</button>
+                  <button onClick={() => sendKey('F')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-slate-200 hover:bg-white/20">F</button>
+                  <button onClick={() => sendKey('Space')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-slate-200 hover:bg-white/20">SPACE</button>
+                  <button onClick={() => sendKey('Tab')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-slate-200 hover:bg-white/20">TAB</button>
+                  <button onClick={() => sendKey('Delete')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-red-300 hover:bg-white/20">DEL</button>
+                </div>
+
+                {/* Common CAD combos */}
+                <div className="grid grid-cols-3 gap-1">
+                  <button onClick={() => sendKey('Ctrl+Z')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-slate-200 hover:bg-white/20">Undo (Ctrl+Z)</button>
+                  <button onClick={() => sendKey('Ctrl+S')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-slate-200 hover:bg-white/20">Save (Ctrl+S)</button>
+                  <button onClick={() => sendKey('Enter')} className="py-1.5 bg-white/10 rounded text-[10px] font-mono text-emerald-300 hover:bg-white/20">Enter ↵</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Bottom CAD Floating Action Bar (Frosted Glass Island) */}
@@ -126,6 +206,16 @@ export const StandaloneClientPreview: React.FC = () => {
                 }`}
               >
                 <span>{activeMode === 'direct' ? '👆 Direct' : '🖱️ Trackpad'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowKeyboardDrawer(!showKeyboardDrawer)}
+                className={`p-2 rounded-full text-[11px] font-semibold flex items-center space-x-1 transition-all cursor-pointer ${
+                  showKeyboardDrawer ? 'bg-indigo-500/80 text-white border border-indigo-400/40 shadow-[0_0_12px_rgba(99,102,241,0.5)]' : 'bg-white/5 text-slate-300 hover:text-white'
+                }`}
+                title="Toggle CAD Keyboard"
+              >
+                <KeyboardIcon className="w-3.5 h-3.5" />
               </button>
 
               <button
@@ -170,14 +260,6 @@ export const StandaloneClientPreview: React.FC = () => {
                 title="Zoom Out"
               >
                 <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => setActionFeedback('Sent [ESC] Key')}
-                className="px-2.5 py-1.5 rounded-full bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 text-[10px] font-mono font-bold cursor-pointer"
-                title="Escape"
-              >
-                ESC
               </button>
             </div>
 

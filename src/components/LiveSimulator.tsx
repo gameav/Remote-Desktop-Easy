@@ -6,23 +6,44 @@ import {
   Hand, 
   ZoomIn, 
   ZoomOut, 
-  MousePointer2, 
-  Activity, 
   Terminal, 
   Sliders, 
   CornerUpLeft, 
   Keyboard,
-  Info
+  Info,
+  Zap,
+  Cpu,
+  Wifi,
+  ShieldAlert,
+  Layers,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight
 } from 'lucide-react';
-import { StreamMetrics, TouchEventLog } from '../types';
+import { StreamMetrics, TouchEventLog, KeyboardEventLog, NetworkProfile, AbrMetrics } from '../types';
 
 export const LiveSimulator: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState<boolean>(true);
   const [inputMode, setInputMode] = useState<'direct' | 'trackpad'>('direct');
-  const [targetFps, setTargetFps] = useState<number>(60);
   const [sensitivity, setSensitivity] = useState<number>(1.2);
   const [activeCadAction, setActiveCadAction] = useState<string | null>(null);
   
+  // Capture Engine Selection
+  const [captureBackend, setCaptureBackend] = useState<'dxgi' | 'mss' | 'gdi' | 'pyautogui'>('dxgi');
+
+  // Network & ABR Configuration
+  const [networkProfile, setNetworkProfile] = useState<NetworkProfile>('ultra_lan');
+  
+  // Keyboard State & Modifiers
+  const [activeModifiers, setActiveModifiers] = useState({
+    ctrl: false,
+    shift: false,
+    alt: false,
+    meta: false
+  });
+  const [lastKeyPressed, setLastKeyPressed] = useState<string>('None');
+
   // 3D CAD Model Transform State (simulating a 3D model viewport)
   const [rotX, setRotX] = useState<number>(25);
   const [rotY, setRotY] = useState<number>(-35);
@@ -34,40 +55,146 @@ export const LiveSimulator: React.FC = () => {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 960, y: 540 });
   const [lastTouch, setLastTouch] = useState<{ x: number; y: number } | null>(null);
 
-  // Metrics
-  const [metrics, setMetrics] = useState<StreamMetrics>({
-    fps: 60,
-    rttMs: 14,
-    packetsLost: 0,
-    resolution: '1920x1080',
-    bitrateKbps: 4200,
-    codec: 'H.264 (Constrained Baseline)',
-    state: 'connected'
-  });
+  // Compute Capture Time based on selected backend
+  const captureLatencyMap = {
+    dxgi: 0.8,
+    mss: 5.2,
+    gdi: 18.5,
+    pyautogui: 42.0
+  };
+
+  // Compute ABR Parameters based on Network Profile
+  const getAbrMetrics = (profile: NetworkProfile, backend: 'dxgi' | 'mss' | 'gdi' | 'pyautogui'): AbrMetrics => {
+    const captureMs = captureLatencyMap[backend];
+    switch (profile) {
+      case 'ultra_lan':
+        return {
+          profile,
+          targetBitrateKbps: 18000,
+          currentBitrateKbps: 17850,
+          targetFps: 60,
+          scaleFactor: 1.0,
+          compressionCrf: 20,
+          rttMs: 14.5,
+          packetLossRate: 0.0,
+          networkTier: 'Ultra (1080p60)',
+          frameEncodeMs: 2.1,
+          frameCaptureMs: captureMs
+        };
+      case 'wifi_5g':
+        return {
+          profile,
+          targetBitrateKbps: 12000,
+          currentBitrateKbps: 11920,
+          targetFps: 45,
+          scaleFactor: 1.0,
+          compressionCrf: 23,
+          rttMs: 32.0,
+          packetLossRate: 0.2,
+          networkTier: 'High (1080p45)',
+          frameEncodeMs: 2.5,
+          frameCaptureMs: captureMs
+        };
+      case 'lte_mobile':
+        return {
+          profile,
+          targetBitrateKbps: 6500,
+          currentBitrateKbps: 6410,
+          targetFps: 30,
+          scaleFactor: 0.75,
+          compressionCrf: 26,
+          rttMs: 68.0,
+          packetLossRate: 1.2,
+          networkTier: 'Medium (720p30)',
+          frameEncodeMs: 3.1,
+          frameCaptureMs: captureMs
+        };
+      case 'congested':
+        return {
+          profile,
+          targetBitrateKbps: 2200,
+          currentBitrateKbps: 2150,
+          targetFps: 15,
+          scaleFactor: 0.50,
+          compressionCrf: 30,
+          rttMs: 145.0,
+          packetLossRate: 5.4,
+          networkTier: 'Low (540p15)',
+          frameEncodeMs: 4.8,
+          frameCaptureMs: captureMs
+        };
+    }
+  };
+
+  const abr = getAbrMetrics(networkProfile, captureBackend);
+  const totalEndToEndLatencyMs = (abr.frameCaptureMs + abr.frameEncodeMs + (abr.rttMs / 2) + 3.5).toFixed(1);
 
   // Touch/Event Log
-  const [logs, setLogs] = useState<TouchEventLog[]>([]);
+  const [logs, setLogs] = useState<Array<{ id: string; timestamp: string; type: string; details: string; category: 'touch' | 'keyboard' | 'abr' | 'system' }>>([]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animRef = useRef<number | null>(null);
   const fpsTimerRef = useRef<number>(Date.now());
   const frameCountRef = useRef<number>(0);
+  const [currentRenderFps, setCurrentRenderFps] = useState<number>(60);
 
   // Helper to add event log
-  const logEvent = (type: string, x: number, y: number, details: string) => {
-    const newLog: TouchEventLog = {
+  const logEvent = (type: string, details: string, category: 'touch' | 'keyboard' | 'abr' | 'system' = 'touch') => {
+    const newLog = {
       id: Math.random().toString(36).substring(2, 8),
       timestamp: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + Math.floor(Date.now() % 1000).toString().padStart(3, '0'),
       type,
-      x: Math.round(x),
-      y: Math.round(y),
-      details
+      details,
+      category
     };
-    setLogs((prev) => [newLog, ...prev.slice(0, 19)]);
+    setLogs((prev) => [newLog, ...prev.slice(0, 24)]);
   };
 
-  // Canvas rendering loop simulating 60fps Windows 10 CAD desktop stream
+  // Keyboard Event Listener to capture actual keystrokes
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is typing in a form input
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
+
+      setActiveModifiers({
+        ctrl: e.ctrlKey,
+        shift: e.shiftKey,
+        alt: e.altKey,
+        meta: e.metaKey
+      });
+
+      setLastKeyPressed(e.key);
+      logEvent('keydown', `Key: '${e.key}' | Code: ${e.code} | Modifiers: [Ctrl:${e.ctrlKey} Shift:${e.shiftKey} Alt:${e.altKey}]`, 'keyboard');
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
+
+      setActiveModifiers({
+        ctrl: e.ctrlKey,
+        shift: e.shiftKey,
+        alt: e.altKey,
+        meta: e.metaKey
+      });
+
+      logEvent('keyup', `Key: '${e.key}' released`, 'keyboard');
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Canvas rendering loop simulating CAD desktop stream
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -90,13 +217,13 @@ export const LiveSimulator: React.FC = () => {
       frameCountRef.current++;
       const now = Date.now();
       if (now - fpsTimerRef.current >= 1000) {
-        setMetrics(m => ({ ...m, fps: frameCountRef.current }));
+        setCurrentRenderFps(frameCountRef.current);
         frameCountRef.current = 0;
         fpsTimerRef.current = now;
       }
 
       // Background - CAD Workspace
-      ctx.fillStyle = '#1e293b';
+      ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Grid Lines (CAD Blueprint Style)
@@ -117,17 +244,17 @@ export const LiveSimulator: React.FC = () => {
       }
 
       // Draw CAD UI Header Simulation (SolidWorks / Fusion360 style)
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#020617';
       ctx.fillRect(0, 0, canvas.width, 36);
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '12px monospace';
       ctx.textAlign = 'left';
-      ctx.fillText('⚡ Fusion 360 - [Mechanical_Turbine_Housing.step] (60 FPS Native Host)', 16, 22);
+      ctx.fillText(`⚡ SolidWorks 2025 - [Aerospace_Turbine_Shaft.SLDPRT] | Backend: ${captureBackend.toUpperCase()} | ABR: ${abr.networkTier}`, 16, 22);
 
       // Draw 3D Isometric CAD Wireframe Object (Turbine / Gear)
       ctx.save();
       ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
-      ctx.scale(zoom, zoom);
+      ctx.scale(zoom * abr.scaleFactor, zoom * abr.scaleFactor);
 
       // Convert angles to radians
       const radX = (rotX * Math.PI) / 180;
@@ -145,33 +272,27 @@ export const LiveSimulator: React.FC = () => {
           [size, -size, size],
           [size, size, size],
           [-size, size, size],
-          // Internal cylinder points
           [0, -size * 1.5, 0],
           [0, size * 1.5, 0]
         ];
 
-        // 3D rotation projection
         const projected = vertices.map(([vx, vy, vz]) => {
-          // Rot Y
           const x1 = vx * Math.cos(radY) + vz * Math.sin(radY);
           const z1 = -vx * Math.sin(radY) + vz * Math.cos(radY);
-          // Rot X
           const y2 = vy * Math.cos(radX) - z1 * Math.sin(radX);
           const z2 = vy * Math.sin(radX) + z1 * Math.cos(radX);
           return [x1, y2, z2];
         });
 
-        // Draw edges
         const edges = [
-          [0, 1], [1, 2], [2, 3], [3, 0], // back face
-          [4, 5], [5, 6], [6, 7], [7, 4], // front face
-          [0, 4], [1, 5], [2, 6], [3, 7], // connecting edges
-          [8, 0], [8, 1], [8, 4], [8, 5], // top turbine cone
-          [9, 2], [9, 3], [9, 6], [9, 7]  // bottom mount
+          [0, 1], [1, 2], [2, 3], [3, 0],
+          [4, 5], [5, 6], [6, 7], [7, 4],
+          [0, 4], [1, 5], [2, 6], [3, 7],
+          [8, 0], [8, 1], [8, 4], [8, 5],
+          [9, 2], [9, 3], [9, 6], [9, 7]
         ];
 
-        // Draw solid subtle faces
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
         ctx.beginPath();
         ctx.moveTo(projected[4][0], projected[4][1]);
         ctx.lineTo(projected[5][0], projected[5][1]);
@@ -191,19 +312,18 @@ export const LiveSimulator: React.FC = () => {
 
         // Center Axis Widget (RGB Gizmo)
         ctx.lineWidth = 3;
-        // X Axis (Red)
         ctx.strokeStyle = '#ef4444';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(50 * Math.cos(radY), -50 * Math.sin(radX) * Math.sin(radY));
         ctx.stroke();
-        // Y Axis (Green)
+
         ctx.strokeStyle = '#22c55e';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(0, -50 * Math.cos(radX));
         ctx.stroke();
-        // Z Axis (Blue)
+
         ctx.strokeStyle = '#3b82f6';
         ctx.beginPath();
         ctx.moveTo(0, 0);
@@ -221,7 +341,6 @@ export const LiveSimulator: React.FC = () => {
       const curX = cursorPos.x * scaleFactorX;
       const curY = cursorPos.y * scaleFactorY;
 
-      // Draw cursor arrow
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1.5;
@@ -237,9 +356,8 @@ export const LiveSimulator: React.FC = () => {
       ctx.fill();
       ctx.stroke();
 
-      // Cursor coordinates badge
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(curX + 16, curY + 10, 80, 18);
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(curX + 16, curY + 10, 85, 18);
       ctx.fillStyle = '#38bdf8';
       ctx.font = '10px monospace';
       ctx.fillText(`X:${Math.round(cursorPos.x)} Y:${Math.round(cursorPos.y)}`, curX + 20, curY + 22);
@@ -253,7 +371,7 @@ export const LiveSimulator: React.FC = () => {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [isStreaming, rotX, rotY, panX, panY, zoom, cursorPos]);
+  }, [isStreaming, rotX, rotY, panX, panY, zoom, cursorPos, captureBackend, abr]);
 
   // Touch and Mouse Input Handling on the Simulator Viewport
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -265,9 +383,9 @@ export const LiveSimulator: React.FC = () => {
 
     if (inputMode === 'direct') {
       setCursorPos({ x, y });
-      logEvent('mousedown', x, y, `Left Click @ [${Math.round(x)}, ${Math.round(y)}]`);
+      logEvent('mousedown', `Left Click @ [${Math.round(x)}, ${Math.round(y)}]`, 'touch');
     } else {
-      logEvent('trackpad_down', x, y, 'Virtual Trackpad contact initiated');
+      logEvent('trackpad_down', 'Virtual Trackpad contact initiated', 'touch');
     }
   };
 
@@ -282,25 +400,22 @@ export const LiveSimulator: React.FC = () => {
     const dy = e.clientY - lastTouch.y;
 
     if (activeCadAction === 'orbit') {
-      // 3D Orbit CAD rotation
       setRotY((prev) => prev + dx * 0.8);
       setRotX((prev) => Math.max(-85, Math.min(85, prev + dy * 0.8)));
-      logEvent('cad_orbit', currentX, currentY, `Orbit ΔX:${dx.toFixed(1)} ΔY:${dy.toFixed(1)}`);
+      logEvent('cad_orbit', `Orbit ΔX:${dx.toFixed(1)} ΔY:${dy.toFixed(1)}`, 'touch');
     } else if (activeCadAction === 'pan') {
-      // CAD Pan translation
       setPanX((prev) => prev + dx * 1.2);
       setPanY((prev) => prev + dy * 1.2);
-      logEvent('cad_pan', currentX, currentY, `Pan offset [${panX.toFixed(0)}, ${panY.toFixed(0)}]`);
+      logEvent('cad_pan', `Pan offset [${panX.toFixed(0)}, ${panY.toFixed(0)}]`, 'touch');
     } else if (inputMode === 'direct') {
       setCursorPos({ x: currentX, y: currentY });
-      logEvent('mousemove', currentX, currentY, `Direct move normalized [${(currentX/1920).toFixed(3)}, ${(currentY/1080).toFixed(3)}]`);
+      logEvent('mousemove', `Direct move [${Math.round(currentX)}, ${Math.round(currentY)}]`, 'touch');
     } else {
-      // Trackpad mode relative move
       setCursorPos((prev) => ({
         x: Math.max(0, Math.min(1920, prev.x + dx * sensitivity * 2)),
         y: Math.max(0, Math.min(1080, prev.y + dy * sensitivity * 2)),
       }));
-      logEvent('mouserel', cursorPos.x, cursorPos.y, `Rel Δx:${dx.toFixed(1)} Δy:${dy.toFixed(1)} (Sens: ${sensitivity}x)`);
+      logEvent('mouserel', `Rel Δx:${dx.toFixed(1)} Δy:${dy.toFixed(1)} (Sens: ${sensitivity}x)`, 'touch');
     }
 
     setLastTouch({ x: e.clientX, y: e.clientY });
@@ -308,46 +423,52 @@ export const LiveSimulator: React.FC = () => {
 
   const handlePointerUp = () => {
     setLastTouch(null);
-    logEvent('mouseup', cursorPos.x, cursorPos.y, 'Pointer released');
+    logEvent('mouseup', 'Pointer released', 'touch');
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     const zoomDelta = e.deltaY > 0 ? -0.15 : 0.15;
     setZoom((prev) => Math.max(0.3, Math.min(4.0, prev + zoomDelta)));
-    logEvent('wheel', cursorPos.x, cursorPos.y, `CAD Wheel Zoom (Scale: ${(zoom + zoomDelta).toFixed(2)}x)`);
+    logEvent('wheel', `CAD Wheel Zoom (Scale: ${(zoom + zoomDelta).toFixed(2)}x)`, 'touch');
   };
 
   const triggerCadAction = (action: string) => {
     if (activeCadAction === action) {
       setActiveCadAction(null);
-      logEvent('cad_action_end', cursorPos.x, cursorPos.y, `Exited ${action.toUpperCase()} mode`);
+      logEvent('cad_action_end', `Exited ${action.toUpperCase()} mode`, 'touch');
     } else {
       setActiveCadAction(action);
-      logEvent('cad_action_start', cursorPos.x, cursorPos.y, `Entered ${action.toUpperCase()} mode (Hold & Drag)`);
+      logEvent('cad_action_start', `Entered ${action.toUpperCase()} mode (Middle Mouse Drag)`, 'touch');
     }
   };
 
-  const handleCadZoom = (delta: number) => {
-    setZoom((prev) => Math.max(0.3, Math.min(4.0, prev + delta)));
-    logEvent('wheel', cursorPos.x, cursorPos.y, `CAD Zoom Step: ${(zoom + delta).toFixed(2)}x`);
+  const sendDirectHotkey = (keys: string[]) => {
+    logEvent('hotkey', `Dispatched Hotkey: [${keys.join(' + ')}] via Win32 SendInput / pynput`, 'keyboard');
+    if (keys.includes('Home') || keys.includes('F')) {
+      setRotX(25);
+      setRotY(-35);
+      setPanX(0);
+      setPanY(0);
+      setZoom(1.0);
+    }
   };
 
-  const resetView = () => {
-    setRotX(25);
-    setRotY(-35);
-    setPanX(0);
-    setPanY(0);
-    setZoom(1.0);
-    logEvent('hotkey', 960, 540, 'View reset to Isometric Standard [Home]');
+  const toggleSimulatedModifier = (mod: 'ctrl' | 'shift' | 'alt' | 'meta') => {
+    setActiveModifiers(prev => {
+      const next = { ...prev, [mod]: !prev[mod] };
+      logEvent('modifier_sync', `Modifier '${mod.toUpperCase()}' state toggled to: ${next[mod]}`, 'keyboard');
+      return next;
+    });
   };
 
   return (
     <div className="space-y-6">
       {/* Top Stream Status & Controls Bar */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-3 bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
-          <div className="flex items-center space-x-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Stream & Input Mode */}
+        <div className="lg:col-span-7 bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center space-x-3">
             <button
               onClick={() => setIsStreaming(!isStreaming)}
               className={`flex items-center space-x-2 px-4 py-2 rounded-full font-semibold text-xs transition-all backdrop-blur-md cursor-pointer ${
@@ -361,7 +482,7 @@ export const LiveSimulator: React.FC = () => {
             </button>
 
             <div className="flex items-center space-x-2 text-xs">
-              <span className="text-slate-400 font-medium">Input Mode:</span>
+              <span className="text-slate-400 font-medium hidden sm:inline">Input:</span>
               <div className="bg-white/5 p-1 rounded-full border border-white/10 flex backdrop-blur-md">
                 <button
                   onClick={() => setInputMode('direct')}
@@ -384,42 +505,158 @@ export const LiveSimulator: React.FC = () => {
           </div>
 
           {/* Quick Metrics Badges */}
-          <div className="flex items-center space-x-2.5 text-xs">
-            <div className="px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-slate-300 font-mono flex items-center space-x-1.5 shadow-sm">
+          <div className="flex items-center space-x-2 text-xs font-mono">
+            <div className="px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-slate-300 flex items-center space-x-1.5 shadow-sm">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#22c55e]" />
-              <span>RTT: {metrics.rttMs}ms</span>
+              <span>RTT: {abr.rttMs}ms</span>
             </div>
-            <div className="px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-slate-300 font-mono">
-              <span className="text-emerald-400 font-bold">{metrics.fps}</span> FPS
-            </div>
-            <div className="px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-slate-400 font-mono hidden sm:block">
-              {metrics.resolution}
+            <div className="px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-slate-300">
+              <span className="text-emerald-400 font-bold">{abr.targetFps}</span> FPS
             </div>
           </div>
         </div>
 
-        {/* Sensitivity & Target FPS Controller */}
-        <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col justify-center space-y-2 shadow-xl">
-          <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Trackpad Sensitivity</span>
-            <span className="text-blue-400 font-mono font-bold">{sensitivity.toFixed(1)}x</span>
+        {/* Screen Capture Backend Selector */}
+        <div className="lg:col-span-5 bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col justify-center space-y-1.5 shadow-xl">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-400 flex items-center space-x-1.5 font-medium">
+              <Cpu className="w-3.5 h-3.5 text-blue-400" />
+              <span>Capture Engine:</span>
+            </span>
+            <span className="text-emerald-400 font-mono font-bold text-[11px]">
+              {abr.frameCaptureMs}ms Latency
+            </span>
           </div>
-          <input
-            type="range"
-            min="0.5"
-            max="3.0"
-            step="0.1"
-            value={sensitivity}
-            onChange={(e) => setSensitivity(parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-400"
-          />
+          <div className="grid grid-cols-4 gap-1.5 pt-1">
+            <button
+              onClick={() => {
+                setCaptureBackend('dxgi');
+                logEvent('capture_switch', 'Switched to DXGI Desktop Duplication API (<1ms GPU VRAM)', 'system');
+              }}
+              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
+                captureBackend === 'dxgi'
+                  ? 'bg-blue-500/30 text-blue-300 border-blue-400/50 shadow-[0_0_10px_rgba(59,130,246,0.3)]'
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+              }`}
+            >
+              DXGI
+            </button>
+            <button
+              onClick={() => {
+                setCaptureBackend('mss');
+                logEvent('capture_switch', 'Switched to MSS DIB section capture (~5.2ms)', 'system');
+              }}
+              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
+                captureBackend === 'mss'
+                  ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400/50 shadow-[0_0_10px_rgba(34,197,94,0.3)]'
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+              }`}
+            >
+              MSS
+            </button>
+            <button
+              onClick={() => {
+                setCaptureBackend('gdi');
+                logEvent('capture_switch', 'Switched to Windows GDI BitBlt (~18.5ms)', 'system');
+              }}
+              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
+                captureBackend === 'gdi'
+                  ? 'bg-amber-500/30 text-amber-300 border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.3)]'
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+              }`}
+            >
+              GDI
+            </button>
+            <button
+              onClick={() => {
+                setCaptureBackend('pyautogui');
+                logEvent('capture_switch', 'Switched to PyAutoGUI PIL Screenshot (~42ms - Bottleneck)', 'system');
+              }}
+              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
+                captureBackend === 'pyautogui'
+                  ? 'bg-red-500/30 text-red-300 border-red-400/50 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+              }`}
+            >
+              PyAuto
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Adaptive Bitrate (ABR) Network Conditioner Bar */}
+      <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-xl space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                Adaptive Bitrate (ABR) Network Simulation & Auto-Scaling
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Host AI/controller dynamically throttles bitrate, framerate, and CRF compression based on client feedback.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] text-slate-400">Network Condition:</span>
+            <div className="bg-white/5 p-1 rounded-full border border-white/10 flex backdrop-blur-md">
+              {(['ultra_lan', 'wifi_5g', 'lte_mobile', 'congested'] as NetworkProfile[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => {
+                    setNetworkProfile(p);
+                    logEvent('abr_profile_change', `Simulated network shift to: ${p.toUpperCase()}`, 'abr');
+                  }}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    networkProfile === p
+                      ? 'bg-blue-500/80 text-white shadow-sm font-semibold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {p === 'ultra_lan' ? 'Ultra LAN' : p === 'wifi_5g' ? '5G / Fast Wi-Fi' : p === 'lte_mobile' ? 'LTE 4G' : 'Congested (Loss)'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Live ABR Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1">
+          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Active ABR Tier</span>
+            <span className="text-xs font-bold text-blue-300 font-mono">{abr.networkTier}</span>
+          </div>
+          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Target Bitrate</span>
+            <span className="text-xs font-bold text-emerald-400 font-mono">{(abr.targetBitrateKbps / 1000).toFixed(1)} Mbps</span>
+          </div>
+          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Target FPS</span>
+            <span className="text-xs font-bold text-slate-200 font-mono">{abr.targetFps} FPS</span>
+          </div>
+          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Resolution Scale</span>
+            <span className="text-xs font-bold text-slate-200 font-mono">{(abr.scaleFactor * 100).toFixed(0)}% (1080p)</span>
+          </div>
+          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">H.264 CRF Value</span>
+            <span className="text-xs font-bold text-amber-300 font-mono">{abr.compressionCrf} (Constant Rate)</span>
+          </div>
+          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Total End-to-End Latency</span>
+            <span className="text-xs font-bold text-emerald-300 font-mono">{totalEndToEndLatencyMs} ms</span>
+          </div>
         </div>
       </div>
 
       {/* Main Viewport & CAD Action Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left 8 cols: Interactive Canvas & Mobile Touch Area */}
-        <div className="lg:col-span-8 space-y-3">
+        <div className="lg:col-span-8 space-y-4">
           <div
             ref={containerRef}
             onPointerDown={handlePointerDown}
@@ -470,7 +707,7 @@ export const LiveSimulator: React.FC = () => {
               </button>
 
               <button
-                onClick={() => handleCadZoom(0.2)}
+                onClick={() => setZoom((prev) => Math.min(4.0, prev + 0.2))}
                 className="p-2 rounded-full text-slate-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                 title="Zoom In"
               >
@@ -478,7 +715,7 @@ export const LiveSimulator: React.FC = () => {
               </button>
 
               <button
-                onClick={() => handleCadZoom(-0.2)}
+                onClick={() => setZoom((prev) => Math.max(0.3, prev - 0.2))}
                 className="p-2 rounded-full text-slate-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                 title="Zoom Out"
               >
@@ -486,110 +723,175 @@ export const LiveSimulator: React.FC = () => {
               </button>
 
               <button
-                onClick={resetView}
+                onClick={() => sendDirectHotkey(['Home', 'F'])}
                 className="px-3 py-1.5 rounded-full text-slate-300 hover:bg-white/10 hover:text-white text-xs font-medium cursor-pointer"
-                title="Reset View to Default"
+                title="Fit to Screen"
               >
-                Reset
+                Fit (F)
               </button>
             </div>
           </div>
 
-          {/* Quick Instructions & Keymap Note (Frosted Banner) */}
-          <div className="flex items-start space-x-3 p-3.5 rounded-2xl bg-white/[0.03] backdrop-blur-md border border-white/10 text-slate-300 text-xs">
-            <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-            <div>
-              <span className="font-semibold text-slate-200">How to test this live viewport:</span> Drag on the canvas to simulate iPhone touch coordinate transmission. Click <strong>Orbit</strong> or <strong>Pan</strong> to engage CAD 3D navigation (Middle Mouse Button simulation). The DataChannel packet monitor on the right displays the exact real-time payloads sent to the Windows Host.
-            </div>
-          </div>
-        </div>
-
-        {/* Right 4 cols: DataChannel Traffic Monitor & CAD Keymap Quick-Fire */}
-        <div className="lg:col-span-4 space-y-4">
-          {/* Real-time DataChannel Packet Log */}
-          <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col h-[320px] shadow-xl">
-            <div className="flex items-center justify-between mb-3">
+          {/* Interactive Keyboard Testing & Modifier State Display */}
+          <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 space-y-3 shadow-xl">
+            <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Terminal className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-xs font-bold text-slate-200 uppercase tracking-widest">
-                  DataChannel Packet Log
+                <Keyboard className="w-4 h-4 text-blue-400" />
+                <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Live Keyboard Input & Modifier State Machine
                 </h3>
               </div>
-              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-mono text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#22c55e]" />
-                <span>Active</span>
-              </div>
+              <span className="text-[11px] font-mono text-slate-400">
+                Last Key: <strong className="text-blue-300">{lastKeyPressed}</strong>
+              </span>
             </div>
 
-            <div className="flex-1 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 font-mono text-[11px] overflow-y-auto space-y-2 no-scrollbar">
-              {logs.length === 0 ? (
-                <div className="text-slate-500 text-center py-10">
-                  Touch or drag on the viewport to see real-time WebRTC input packets.
-                </div>
-              ) : (
-                logs.map((log) => (
-                  <div key={log.id} className="flex items-start space-x-2 text-slate-300 border-b border-white/5 pb-1.5">
-                    <span className="text-slate-500 text-[10px]">{log.timestamp}</span>
-                    <span className={`font-semibold ${
-                      log.type.startsWith('cad') ? 'text-blue-400' :
-                      log.type.includes('down') || log.type.includes('click') ? 'text-amber-400' :
-                      'text-emerald-400'
-                    }`}>
-                      [{log.type}]
-                    </span>
-                    <span className="text-slate-400 truncate">{log.details}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Quick-Fire Windows Hotkey Simulator */}
-          <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 space-y-3 shadow-xl">
-            <div className="flex items-center space-x-2">
-              <Keyboard className="w-4 h-4 text-blue-400" />
-              <h3 className="text-xs font-bold text-slate-200 uppercase tracking-widest">
-                CAD Windows Hotkey Injections
-              </h3>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
+            {/* Modifier Key Badges (Sync with physical keyboard or on-screen taps) */}
+            <div className="grid grid-cols-4 gap-2">
               <button
-                onClick={() => logEvent('hotkey', cursorPos.x, cursorPos.y, 'Sent [Escape] - Deselect / Cancel')}
-                className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono font-medium text-center border border-white/10 transition-all active:scale-95 cursor-pointer shadow-sm"
+                onClick={() => toggleSimulatedModifier('ctrl')}
+                className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all border cursor-pointer ${
+                  activeModifiers.ctrl
+                    ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+                }`}
+              >
+                CTRL {activeModifiers.ctrl && '✓'}
+              </button>
+
+              <button
+                onClick={() => toggleSimulatedModifier('shift')}
+                className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all border cursor-pointer ${
+                  activeModifiers.shift
+                    ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+                }`}
+              >
+                SHIFT {activeModifiers.shift && '✓'}
+              </button>
+
+              <button
+                onClick={() => toggleSimulatedModifier('alt')}
+                className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all border cursor-pointer ${
+                  activeModifiers.alt
+                    ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+                }`}
+              >
+                ALT {activeModifiers.alt && '✓'}
+              </button>
+
+              <button
+                onClick={() => toggleSimulatedModifier('meta')}
+                className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all border cursor-pointer ${
+                  activeModifiers.meta
+                    ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+                }`}
+              >
+                WIN / CMD {activeModifiers.meta && '✓'}
+              </button>
+            </div>
+
+            {/* Quick Virtual Key Actions */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                onClick={() => sendDirectHotkey(['Escape'])}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono border border-white/10 cursor-pointer active:scale-95"
               >
                 ESC
               </button>
               <button
-                onClick={() => logEvent('hotkey', cursorPos.x, cursorPos.y, 'Sent [Ctrl + Z] - Undo')}
-                className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono font-medium text-center border border-white/10 transition-all active:scale-95 cursor-pointer shadow-sm flex items-center justify-center space-x-1"
+                onClick={() => sendDirectHotkey(['Ctrl', 'Z'])}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono border border-white/10 cursor-pointer active:scale-95 flex items-center space-x-1"
               >
                 <CornerUpLeft className="w-3 h-3 text-blue-400" />
                 <span>Ctrl+Z</span>
               </button>
               <button
-                onClick={() => logEvent('hotkey', cursorPos.x, cursorPos.y, 'Sent [Ctrl + S] - Save Project')}
-                className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono font-medium text-center border border-white/10 transition-all active:scale-95 cursor-pointer shadow-sm"
+                onClick={() => sendDirectHotkey(['Ctrl', 'S'])}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono border border-white/10 cursor-pointer active:scale-95"
               >
                 Ctrl+S
               </button>
               <button
-                onClick={() => logEvent('hotkey', cursorPos.x, cursorPos.y, 'Sent [Space] - View Orientation Palette')}
-                className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono font-medium text-center border border-white/10 transition-all active:scale-95 cursor-pointer shadow-sm"
+                onClick={() => sendDirectHotkey(['Space'])}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono border border-white/10 cursor-pointer active:scale-95"
               >
-                Space
+                Space (Orient)
               </button>
               <button
-                onClick={() => logEvent('hotkey', cursorPos.x, cursorPos.y, 'Sent [F] - Fit to Screen')}
-                className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono font-medium text-center border border-white/10 transition-all active:scale-95 cursor-pointer shadow-sm"
+                onClick={() => sendDirectHotkey(['Tab'])}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-mono border border-white/10 cursor-pointer active:scale-95"
               >
-                Fit (F)
+                Tab
               </button>
               <button
-                onClick={() => logEvent('hotkey', cursorPos.x, cursorPos.y, 'Sent [Delete] - Delete entity')}
-                className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-red-300 text-xs font-mono font-medium text-center border border-white/10 transition-all active:scale-95 cursor-pointer shadow-sm"
+                onClick={() => sendDirectHotkey(['Delete'])}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-red-300 text-xs font-mono border border-white/10 cursor-pointer active:scale-95"
               >
                 Del
               </button>
+              <button
+                onClick={() => sendDirectHotkey(['Enter'])}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-emerald-300 text-xs font-mono border border-white/10 cursor-pointer active:scale-95"
+              >
+                Enter ↵
+              </button>
+            </div>
+            
+            <p className="text-[11px] text-slate-400 italic">
+              💡 Tip: Press any physical key on your keyboard right now — events are captured and dispatched via WebRTC DataChannel simulation!
+            </p>
+          </div>
+        </div>
+
+        {/* Right 4 cols: Real-Time WebRTC DataChannel & Telemetry Stream */}
+        <div className="lg:col-span-4 space-y-4">
+          {/* Real-time DataChannel Packet Log */}
+          <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col h-[520px] shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2">
+                <Terminal className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs font-bold text-slate-200 uppercase tracking-widest">
+                  WebRTC DataChannel Stream
+                </h3>
+              </div>
+              <button
+                onClick={() => setLogs([])}
+                className="text-[10px] text-slate-400 hover:text-slate-200 underline cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="flex-1 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 font-mono text-[11px] overflow-y-auto space-y-2 no-scrollbar">
+              {logs.length === 0 ? (
+                <div className="text-slate-500 text-center py-16 text-xs">
+                  Press keys on your keyboard, touch the viewport, or change network profile to inspect WebRTC packets.
+                </div>
+              ) : (
+                logs.map((log) => (
+                  <div key={log.id} className="flex items-start space-x-2 text-slate-300 border-b border-white/5 pb-1.5">
+                    <span className="text-slate-500 text-[10px] shrink-0">{log.timestamp}</span>
+                    <span className={`font-semibold shrink-0 ${
+                      log.category === 'keyboard' ? 'text-indigo-400' :
+                      log.category === 'abr' ? 'text-amber-400' :
+                      log.category === 'system' ? 'text-purple-400' :
+                      'text-emerald-400'
+                    }`}>
+                      [{log.type}]
+                    </span>
+                    <span className="text-slate-300 break-words leading-tight">{log.details}</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Quick Summary Footer */}
+            <div className="pt-3 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-slate-400">
+              <span>Channel: <strong className="text-emerald-400">input_channel</strong></span>
+              <span>Mode: <strong className="text-blue-400">ordered:true</strong></span>
             </div>
           </div>
         </div>

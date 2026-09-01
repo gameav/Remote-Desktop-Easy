@@ -1,0 +1,92 @@
+name: Release and Automated Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Packages & Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Node Dependencies
+        run: npm ci || npm install
+
+      - name: Validate TypeScript & Build Web App & Signaling Hub
+        run: |
+          npm run build
+
+      - name: Generate Release Version & Timestamp
+        id: vars
+        run: |
+          VERSION="v1.0.$(date +'%Y%m%d%H%M%S')"
+          TAG="release-${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Package Standalone Distribution Archives
+        run: |
+          mkdir -p dist-release
+          # 1. Complete Self-Hosted Remote Desktop Bundle
+          zip -r dist-release/webrtc-remote-desktop-full.zip host/ signaling/ client/ server.ts package.json README.md -x "**/node_modules/*" "**/venv/*" "**/__pycache__/*"
+          # 2. Windows 10 Host Streamer Standalone
+          zip -r dist-release/windows-host-streamer.zip host/ README.md -x "**/venv/*" "**/__pycache__/*"
+          # 3. Client & Signaling Hub Bundle
+          zip -r dist-release/web-client-signaling.zip signaling/ client/ server.ts package.json dist/ -x "**/node_modules/*"
+
+      - name: Create GitHub Release & Upload Binaries
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/')
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: WebRTC Remote Desktop Automated Release ${{ steps.vars.outputs.version }}
+          body: |
+            ## 🚀 Automated Production Release `${{ steps.vars.outputs.version }}`
+            
+            This automated release includes production-ready packages for the WebRTC Remote Desktop CAD System:
+            
+            ### 📦 Included Bundles & Artifacts:
+            1. **`webrtc-remote-desktop-full.zip`**: Complete end-to-end setup (Windows Host, WebSocket/REST Signaling, Mobile Web Client).
+            2. **`windows-host-streamer.zip`**: Standalone Windows 10 Host streamer with DXGI/MSS capture, ABR engine, and Win32 input simulator.
+            3. **`web-client-signaling.zip`**: High-performance Node.js signaling hub & iPhone Safari client.
+            
+            ### ✨ System Architecture Highlights:
+            - **Windows Host Capture**: DXGI Desktop Duplication API (<1.0ms GPU capture) & MSS DIB Section fallback.
+            - **Low-Latency Transport**: WebRTC H.264 / VP8 streaming via `aiortc`.
+            - **Input Pipeline**: Full mouse, middle-click CAD Orbit/Pan, wheel zooming, keydown/keyup, sticky modifier tracking (Shift/Ctrl/Alt/Win), and on-screen CAD drawer.
+            - **Adaptive Bitrate (ABR)**: Real-time RTT & loss feedback dynamically tuning bitrate (1.5–25 Mbps), framerate (15–60 FPS), CRF, and scale.
+            - **Tailscale Ready**: Direct encrypted P2P NAT bypass for iPhone cellular 5G access.
+          files: |
+            dist-release/webrtc-remote-desktop-full.zip
+            dist-release/windows-host-streamer.zip
+            dist-release/web-client-signaling.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
