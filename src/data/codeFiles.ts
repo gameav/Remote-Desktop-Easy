@@ -1272,6 +1272,10 @@ on:
     paths-ignore:
       - '**.md'
       - '.gitignore'
+  pull_request:
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 permissions:
@@ -1292,7 +1296,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -1300,7 +1303,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Node Dependencies
-        run: npm ci || npm install
+        run: npm install --no-audit --no-fund
 
       - name: Validate TypeScript & Build Web App & Signaling Hub
         run: |
@@ -1317,13 +1320,16 @@ jobs:
       - name: Package Standalone Distribution Archives
         run: |
           mkdir -p dist-release
+          # 1. Complete Self-Hosted Remote Desktop Bundle
           zip -r dist-release/webrtc-remote-desktop-full.zip host/ signaling/ client/ server.ts package.json README.md -x "**/node_modules/*" "**/venv/*" "**/__pycache__/*"
+          # 2. Windows 10 Host Streamer Standalone
           zip -r dist-release/windows-host-streamer.zip host/ README.md -x "**/venv/*" "**/__pycache__/*"
+          # 3. Client & Signaling Hub Bundle
           zip -r dist-release/web-client-signaling.zip signaling/ client/ server.ts package.json dist/ -x "**/node_modules/*"
 
       - name: Create GitHub Release & Upload Binaries
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/heads/')
+        if: github.event_name != 'pull_request'
         with:
           tag_name: \${{ steps.vars.outputs.tag }}
           name: WebRTC Remote Desktop Automated Release \${{ steps.vars.outputs.version }}
