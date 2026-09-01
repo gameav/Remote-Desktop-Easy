@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>iPhone WebRTC Remote Desktop (CAD Client)</title>
+  
+  <!-- iOS Web App Optimization -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#090d16" />
+
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --card-bg: #131b2e;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-glow: rgba(59, 130, 246, 0.3);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text-main);
+      touch-action: none;
+    }
+
+    #app-container {
+      position: relative;
+      width: 100vw;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-dark);
+    }
+
+    /* Video Viewport */
+    #stream-viewport {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #remote-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      background: #000;
+    }
+
+    /* Touch Gesture Interactive Layer */
+    #touch-surface {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    /* Virtual Cursor & Touch Ripple */
+    .touch-indicator {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(59, 130, 246, 0.9);
+      background: rgba(59, 130, 246, 0.25);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      transition: transform 0.05s ease-out, opacity 0.2s ease;
+      z-index: 20;
+    }
+
+    /* Top HUD Info Bar */
+    #top-hud {
+      position: absolute;
+      top: calc(var(--safe-top) + 8px);
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 30;
+      pointer-events: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: rgba(19, 27, 46, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      pointer-events: auto;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--danger);
+    }
+    .status-dot.connected {
+      background-color: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+    .status-dot.connecting {
+      background-color: var(--warning);
+      animation: pulse 1s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
+
+    /* Bottom CAD Toolbar */
+    #cad-toolbar {
+      position: absolute;
+      bottom: calc(var(--safe-bottom) + 10px);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(19, 27, 46, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 30px;
+      z-index: 30;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+      max-width: calc(100vw - 20px);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    #cad-toolbar::-webkit-scrollbar { display: none; }
+
+    .tool-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      min-width: 44px;
+      height: 40px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .tool-btn:active, .tool-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 12px var(--accent-glow);
+      transform: scale(0.96);
+    }
+
+    /* Connection Modal Dialog */
+    #connect-modal {
+      position: absolute;
+      inset: 0;
+      background: rgba(9, 13, 22, 0.95);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #connect-card {
+      background: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+    }
+    .input-group {
+      margin-bottom: 14px;
+    }
+    .input-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .input-field {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+    .input-field:focus {
+      border-color: var(--accent);
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:active {
+      background: var(--accent-hover);
+    }
+    
+    /* Stats Overlay */
+    #stats-box {
+      font-family: monospace;
+      font-size: 10px;
+      color: #34d399;
+      background: rgba(0,0,0,0.6);
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app-container">
+  <!-- Top HUD -->
+  <div id="top-hud">
+    <div class="badge">
+      <div id="status-dot" class="status-dot"></div>
+      <span id="status-text">Disconnected</span>
+    </div>
+    <div id="stats-box" class="badge">RTT: --ms | 0 FPS</div>
+    <div class="badge" onclick="toggleConnectModal()" style="cursor:pointer">⚙️ Config</div>
+  </div>
+
+  <!-- Video & Touch Viewport -->
+  <div id="stream-viewport">
+    <video id="remote-video" autoplay playsinline muted webkit-playsinline></video>
+    <div id="touch-surface"></div>
+    <div id="touch-pointer" class="touch-indicator" style="display:none;"></div>
+  </div>
+
+  <!-- Bottom CAD Action Bar -->
+  <div id="cad-toolbar">
+    <button class="tool-btn active" id="btn-mode-direct" onclick="setInputMode('direct')">
+      <span>👆 Direct</span>
+    </button>
+    <button class="tool-btn" id="btn-mode-trackpad" onclick="setInputMode('trackpad')">
+      <span>🖱️ Pad</span>
+    </button>
+    <button class="tool-btn" id="btn-cad-orbit" onpointerdown="startCadAction('orbit')" onpointerup="endCadAction('orbit')">
+      <span>🔄 Orbit</span>
+    </button>
+    <button class="tool-btn" id="btn-cad-pan" onpointerdown="startCadAction('pan')" onpointerup="endCadAction('pan')">
+      <span>✋ Pan</span>
+    </button>
+    <button class="tool-btn" onclick="sendCadWheel(120)">
+      <span>🔍 Zoom+</span>
+    </button>
+    <button class="tool-btn" onclick="sendCadWheel(-120)">
+      <span>🔍 Zoom-</span>
+    </button>
+    <button class="tool-btn" onclick="sendHotkey(['escape'])">
+      <span>ESC</span>
+    </button>
+    <button class="tool-btn" onclick="sendHotkey(['ctrl', 'z'])">
+      <span>↩️ Undo</span>
+    </button>
+  </div>
+
+  <!-- Setup / Configuration Modal -->
+  <div id="connect-modal">
+    <div id="connect-card">
+      <h2 style="font-size: 18px; margin-bottom: 8px;">WebRTC CAD Streamer</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+        Connect your iPhone browser to your Windows 10 Host streamer.
+      </p>
+
+      <div class="input-group">
+        <label>Signaling Server URL (Tailscale IP or Host URL):</label>
+        <input type="text" id="signal-url" class="input-field" value="" placeholder="http://100.x.y.z:3000 or http://localhost:3000" />
+      </div>
+
+      <div class="input-group">
+        <label>Session Room ID:</label>
+        <input type="text" id="room-id" class="input-field" value="cad_session" />
+      </div>
+
+      <div class="input-group">
+        <label>Input Control Mode:</label>
+        <select id="default-mode-select" class="input-field">
+          <option value="direct">Direct Screen Touch (Tap = Click)</option>
+          <option value="trackpad">Virtual Trackpad (Relative Precision)</option>
+        </select>
+      </div>
+
+      <button class="btn-primary" onclick="startWebRTCConnection()">Start Streaming</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // -------------------------------------------------------------
+  // State & WebRTC Config
+  // -------------------------------------------------------------
+  let pc = null;
+  let dataChannel = null;
+  let ws = null;
+  let inputMode = 'direct'; // 'direct' | 'trackpad'
+  let isConnected = false;
+  let pingInterval = null;
+  let lastPingTime = 0;
+  let hostResolution = { width: 1920, height: 1080 };
+
+  // Trackpad state
+  let lastTouchX = 0;
+  let lastTouchY = 0;
+  let touchStartTime = 0;
+  let touchStartPos = { x: 0, y: 0 };
+  let isMultiTouch = false;
+
+  const videoElem = document.getElementById('remote-video');
+  const touchSurface = document.getElementById('touch-surface');
+  const pointerElem = document.getElementById('touch-pointer');
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const statsBox = document.getElementById('stats-box');
+  const modal = document.getElementById('connect-modal');
+
+  // Default signaling URL to current host if empty
+  document.getElementById('signal-url').value = window.location.origin;
+
+  function toggleConnectModal() {
+    modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  function setStatus(text, state) {
+    statusText.textContent = text;
+    statusDot.className = 'status-dot ' + state;
+  }
+
+  function setInputMode(mode) {
+    inputMode = mode;
+    document.getElementById('btn-mode-direct').classList.toggle('active', mode === 'direct');
+    document.getElementById('btn-mode-trackpad').classList.toggle('active', mode === 'trackpad');
+  }
+
+  // -------------------------------------------------------------
+  // WebRTC Client Connection & Signaling
+  // -------------------------------------------------------------
+  async function startWebRTCConnection() {
+    const rawUrl = document.getElementById('signal-url').value.trim() || window.location.origin;
+    const roomId = document.getElementById('room-id').value.trim() || 'cad_session';
+    modal.style.display = 'none';
+
+    setStatus('Connecting...', 'connecting');
+
+    // 1. Create Peer Connection with public Google STUN servers
+    const rtcConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    if (pc) pc.close();
+    pc = new RTCPeerConnection(rtcConfig);
+
+    // 2. Handle Incoming Video Track
+    pc.ontrack = (event) => {
+      console.log('[WebRTC] Received Remote Stream Track:', event.track.kind);
+      if (event.streams && event.streams[0]) {
+        videoElem.srcObject = event.streams[0];
+      } else {
+        const stream = new MediaStream([event.track]);
+        videoElem.srcObject = stream;
+      }
+      videoElem.play().catch(e => console.log('Autoplay handled:', e));
+    };
+
+    // 3. Handle DataChannel for mouse & CAD inputs
+    pc.ondatachannel = (event) => {
+      console.log('[WebRTC] DataChannel received:', event.channel.label);
+      setupDataChannel(event.channel);
+    };
+
+    // Also proactively create a data channel in case client creates it
+    const clientChannel = pc.createDataChannel('input_channel', { ordered: true });
+    setupDataChannel(clientChannel);
+
+    // 4. WebSocket Signaling
+    const wsUrl = rawUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
+    console.log('[Signaling] Connecting to:', wsUrl);
+
+    if (ws) ws.close();
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('[Signaling] WebSocket Open. Joining room as CLIENT:', roomId);
+      ws.send(JSON.stringify({ type: 'join', role: 'client', roomId }));
+    };
+
+    ws.onmessage = async (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        console.log('[Signaling] Inbound:', msg.type);
+
+        if (msg.type === 'offer') {
+          console.log('[Signaling] Processing SDP Offer from Windows Host...');
+          await pc.setRemoteDescription(new RTCSessionDescription({
+            type: msg.sdpType || 'offer',
+            sdp: msg.sdp
+          }));
+
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          ws.send(JSON.stringify({
+            type: 'answer',
+            role: 'client',
+            roomId,
+            sdp: answer.sdp,
+            sdpType: answer.type
+          }));
+          console.log('[Signaling] Sent SDP Answer to Windows Host.');
+        }
+
+        if (msg.type === 'candidate' && msg.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+          } catch (e) {
+            console.warn('Error adding ICE candidate:', e);
+          }
+        }
+      } catch (err) {
+        console.error('Signaling parse error:', err);
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'candidate',
+          role: 'client',
+          roomId,
+          candidate: event.candidate
+        }));
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('[ICE State]', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        setStatus('Live (Streaming)', 'connected');
+        isConnected = true;
+        startLatencyMonitoring();
+      } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+        setStatus('Disconnected', '');
+        isConnected = false;
+      }
+    };
+  }
+
+  function setupDataChannel(channel) {
+    dataChannel = channel;
+    dataChannel.onopen = () => {
+      console.log('[DataChannel] Input channel READY!');
+    };
+    dataChannel.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'pong') {
+          const rtt = Date.now() - msg.timestamp;
+          statsBox.textContent = `RTT: ${rtt}ms | CAD Ready`;
+        } else if (msg.type === 'host_ready') {
+          hostResolution.width = msg.screenWidth || 1920;
+          hostResolution.height = msg.screenHeight || 1080;
+        }
+      } catch (err) {}
+    };
+  }
+
+  function sendData(payload) {
+    if (dataChannel && dataChannel.readyState === 'open') {
+      dataChannel.send(JSON.stringify(payload));
+    }
+  }
+
+  function startLatencyMonitoring() {
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+      if (dataChannel && dataChannel.readyState === 'open') {
+        sendData({ type: 'ping', timestamp: Date.now() });
+      }
+    }, 1000);
+  }
+
+  // -------------------------------------------------------------
+  // iPhone Mobile Touch Event Calculations
+  // -------------------------------------------------------------
+  function getNormalizedCoordinates(clientX, clientY) {
+    const rect = videoElem.getBoundingClientRect();
+    // Video might have letterboxing if aspect ratios differ
+    const videoAspect = hostResolution.width / hostResolution.height;
+    const containerAspect = rect.width / rect.height;
+
+    let renderWidth, renderHeight, offsetX, offsetY;
+
+    if (containerAspect > videoAspect) {
+      renderHeight = rect.height;
+      renderWidth = rect.height * videoAspect;
+      offsetX = (rect.width - renderWidth) / 2;
+      offsetY = 0;
+    } else {
+      renderWidth = rect.width;
+      renderHeight = rect.width / videoAspect;
+      offsetX = 0;
+      offsetY = (rect.height - renderHeight) / 2;
+    }
+
+    const normX = Math.max(0, Math.min(1, (clientX - rect.left - offsetX) / renderWidth));
+    const normY = Math.max(0, Math.min(1, (clientY - rect.top - offsetY) / renderHeight));
+
+    return { x: normX, y: normY };
+  }
+
+  // Touch Listeners
+  touchSurface.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    touchStartTime = Date.now();
+    touchStartPos = { x: touch.clientX, y: touch.clientY };
+    lastTouchX = touch.clientX;
+    lastTouchY = touch.clientY;
+
+    if (e.touches.length === 1) {
+      isMultiTouch = false;
+      const coords = getNormalizedCoordinates(touch.clientX, touch.clientY);
+      
+      // Visual indicator
+      pointerElem.style.display = 'block';
+      pointerElem.style.left = touch.clientX + 'px';
+      pointerElem.style.top = touch.clientY + 'px';
+
+      if (inputMode === 'direct') {
+        sendData({ type: 'mousedown', button: 'left', x: coords.x, y: coords.y, normalized: true });
+      }
+    } else if (e.touches.length === 2) {
+      isMultiTouch = true;
+    }
+  }, { passive: false });
+
+  touchSurface.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const coords = getNormalizedCoordinates(touch.clientX, touch.clientY);
+
+      pointerElem.style.left = touch.clientX + 'px';
+      pointerElem.style.top = touch.clientY + 'px';
+
+      if (inputMode === 'direct') {
+        sendData({ type: 'mousemove', x: coords.x, y: coords.y, normalized: true });
+      } else {
+        // Trackpad mode
+        const dx = touch.clientX - lastTouchX;
+        const dy = touch.clientY - lastTouchY;
+        sendData({ type: 'mouserel', dx: dx, dy: dy, sensitivity: 1.2 });
+      }
+
+      lastTouchX = touch.clientX;
+      lastTouchY = touch.clientY;
+    } else if (e.touches.length === 2) {
+      // Two finger scroll / pan
+      const touch1 = e.touches[0];
+      const dy = touch1.clientY - lastTouchY;
+      sendData({ type: 'wheel', deltaY: dy * 3 });
+      lastTouchY = touch1.clientY;
+    }
+  }, { passive: false });
+
+  touchSurface.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    const duration = Date.now() - touchStartTime;
+    pointerElem.style.display = 'none';
+
+    if (!isMultiTouch) {
+      if (inputMode === 'direct') {
+        sendData({ type: 'mouseup', button: 'left' });
+      } else {
+        // Tap on trackpad
+        if (duration < 250) {
+          sendData({ type: 'click', button: 'left' });
+        }
+      }
+    } else if (isMultiTouch && e.touches.length === 0) {
+      // Two finger tap = Right click
+      if (duration < 300) {
+        const coords = getNormalizedCoordinates(touchStartPos.x, touchStartPos.y);
+        sendData({ type: 'click', button: 'right', x: coords.x, y: coords.y, normalized: true });
+      }
+    }
+  }, { passive: false });
+
+  // -------------------------------------------------------------
+  // CAD Action Helpers
+  // -------------------------------------------------------------
+  function startCadAction(action) {
+    sendData({ type: 'cad_action', action: action, state: 'start' });
+  }
+
+  function endCadAction(action) {
+    sendData({ type: 'cad_action', action: action, state: 'end' });
+  }
+
+  function sendCadWheel(delta) {
+    sendData({ type: 'wheel', deltaY: delta });
+  }
+
+  function sendHotkey(keys) {
+    sendData({ type: 'hotkey', keys: keys });
+  }
+</script>
+
+</body>
+</html>

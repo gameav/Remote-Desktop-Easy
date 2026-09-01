@@ -1,0 +1,7 @@
+{
+  "name": "WebRTC Remote Desktop (CAD & Low-Latency)",
+  "description": "Ultra-low latency self-hosted WebRTC remote desktop architecture for Windows 10 host, iPhone mobile browser client, signaling server, and Tailscale VPN setup for remote CAD workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
