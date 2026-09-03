@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 
 export const StandaloneClientPreview: React.FC = () => {
-  const [activeMode, setActiveMode] = useState<'direct' | 'trackpad'>('direct');
+  const [deviceView, setDeviceView] = useState<'iphone' | 'desktop'>('iphone');
+  const [activeMode, setActiveMode] = useState<'direct' | 'trackpad' | 'desktop_kvm'>('direct');
   const [activeCadTool, setActiveCadTool] = useState<string | null>(null);
   const [showKeyboardDrawer, setShowKeyboardDrawer] = useState<boolean>(false);
   const [modifiers, setModifiers] = useState({ ctrl: false, shift: false, alt: false });
@@ -59,25 +60,42 @@ export const StandaloneClientPreview: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex items-center justify-between shadow-xl">
+      {/* Top Banner & Device Switcher */}
+      <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xl">
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-xl bg-white/10 border border-white/15 text-blue-400">
             <Smartphone className="w-5 h-5" />
           </div>
           <div>
             <h2 className="text-xs font-bold text-slate-100 uppercase tracking-widest">
-              iPhone Mobile Web Client Live Preview (iOS Safari Mockup)
+              Interactive WebRTC Client Preview ({deviceView === 'iphone' ? 'iPhone Safari Touch Mockup' : 'Desktop Browser KVM Mockup'})
             </h2>
             <p className="text-[11px] text-slate-400">
-              Complete single-file web client with full keyboard event listeners, on-screen CAD drawer, and real-time ABR telemetry.
+              Zero-install browser client: touch gestures on iOS/Android or Pointer Lock & hardware keyboard capture on Mac/Windows/Linux.
             </p>
           </div>
         </div>
-        <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 shadow-[0_0_10px_rgba(34,197,94,0.2)] flex items-center space-x-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#22c55e]" />
-          <span>Live DataChannel</span>
-        </span>
+
+        <div className="flex items-center space-x-2">
+          <div className="bg-white/5 p-1 rounded-full border border-white/10 flex backdrop-blur-md">
+            <button
+              onClick={() => setDeviceView('iphone')}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                deviceView === 'iphone' ? 'bg-white/20 text-white shadow-sm font-semibold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              📱 iPhone Safari
+            </button>
+            <button
+              onClick={() => setDeviceView('desktop')}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                deviceView === 'desktop' ? 'bg-blue-500/80 text-white shadow-sm font-semibold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              💻 Desktop Browser (KVM)
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="flex justify-center">

@@ -1257,6 +1257,59 @@ pause
 `
   },
   {
+    id: 'sh_script',
+    name: 'run_host.sh (macOS & Linux)',
+    language: 'bash',
+    category: 'script',
+    description: 'One-click bash startup script for macOS and Linux with automated virtual environment and dependency setup.',
+    content: `#!/usr/bin/env bash
+set -e
+
+echo "======================================================================"
+echo " 🖥️ WebRTC Cross-Platform Desktop Streamer (macOS / Linux / Windows)"
+echo "======================================================================"
+
+OS="$(uname -s)"
+case "\${OS}" in
+    Darwin*)    OS_NAME="macOS";;
+    Linux*)     OS_NAME="Linux";;
+    *)          OS_NAME="Unknown";;
+esac
+echo "Detected Operating System: \${OS_NAME} (\$(uname -m))"
+
+if ! command -v python3 &> /dev/null; then
+    echo "[ERROR] Python 3 was not found. Please install Python 3.10+."
+    exit 1
+fi
+
+if [ "\${OS_NAME}" = "macOS" ]; then
+    echo ""
+    echo "📋 macOS Security Notice:"
+    echo "  Ensure your Terminal has permissions in:"
+    echo "  1. System Settings -> Privacy & Security -> Screen Recording"
+    echo "  2. System Settings -> Privacy & Security -> Accessibility"
+    echo ""
+fi
+
+if [ ! -d "venv" ]; then
+    echo "[*] Creating isolated Python virtual environment..."
+    python3 -m venv venv
+fi
+
+echo "[*] Activating virtual environment & installing dependencies..."
+source venv/bin/activate
+pip install --upgrade pip --quiet
+pip install -r requirements.txt --quiet
+
+echo ""
+echo "🚀 Starting WebRTC Host Streamer on \${OS_NAME}..."
+echo "Press Ctrl+C to stop."
+echo "======================================================================"
+
+python3 windows_host.py --signaling http://localhost:3000 --fps 60 "$@"
+`
+  },
+  {
     id: 'release_workflow',
     name: 'release.yml (GitHub Actions)',
     language: 'yaml',

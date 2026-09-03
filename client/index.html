@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>iPhone WebRTC Remote Desktop (CAD Client)</title>
+  <title>WebRTC Remote Desktop (Mobile & Desktop KVM Client)</title>
   
   <!-- iOS Web App Optimization -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -79,7 +79,7 @@
       background: #000;
     }
 
-    /* Touch Gesture Interactive Layer */
+    /* Touch & Desktop Interaction Surface */
     #touch-surface {
       position: absolute;
       top: 0;
@@ -89,6 +89,11 @@
       z-index: 10;
       touch-action: none;
       cursor: crosshair;
+      outline: none;
+    }
+
+    #touch-surface.pointer-locked {
+      cursor: none !important;
     }
 
     /* Virtual Cursor & Touch Ripple */
@@ -116,6 +121,14 @@
       align-items: center;
       z-index: 30;
       pointer-events: none;
+      gap: 6px;
+    }
+
+    .hud-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
     }
 
     .badge {
@@ -132,6 +145,20 @@
       font-weight: 600;
       letter-spacing: 0.3px;
       pointer-events: auto;
+    }
+
+    .btn-badge {
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-badge:hover {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .btn-badge.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
     }
 
     .status-dot {
@@ -154,7 +181,29 @@
       to { opacity: 1; }
     }
 
-    /* Bottom CAD Toolbar */
+    /* Desktop Pointer Lock Banner Notification */
+    #desktop-hint-banner {
+      position: absolute;
+      top: calc(var(--safe-top) + 48px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #93c5fd;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      z-index: 25;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+    }
+
+    /* Bottom Action Bar */
     #cad-toolbar {
       position: absolute;
       bottom: calc(var(--safe-bottom) + 10px);
@@ -220,7 +269,7 @@
       border-radius: 16px;
       padding: 24px;
       width: 100%;
-      max-width: 400px;
+      max-width: 440px;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
     }
     .input-group {
@@ -278,28 +327,52 @@
 <div id="app-container">
   <!-- Top HUD -->
   <div id="top-hud">
-    <div class="badge">
-      <div id="status-dot" class="status-dot"></div>
-      <span id="status-text">Disconnected</span>
+    <div class="hud-group">
+      <div class="badge">
+        <div id="status-dot" class="status-dot"></div>
+        <span id="status-text">Disconnected</span>
+      </div>
+      <div id="stats-box" class="badge">RTT: --ms | 0 FPS</div>
     </div>
-    <div id="stats-box" class="badge">RTT: --ms | 0 FPS</div>
-    <div class="badge" onclick="toggleConnectModal()" style="cursor:pointer">⚙️ Config</div>
+
+    <div class="hud-group">
+      <div class="badge btn-badge" id="btn-device-mode" onclick="toggleDeviceMode()">
+        <span id="device-mode-label">📱 Touch Mode</span>
+      </div>
+      <div class="badge btn-badge" onclick="pasteClientClipboard()" title="Send clipboard to remote PC">
+        📋 Paste
+      </div>
+      <div class="badge btn-badge" onclick="toggleFullscreen()" title="Toggle Fullscreen">
+        ⛶ Fullscreen
+      </div>
+      <div class="badge btn-badge" onclick="toggleConnectModal()" style="cursor:pointer">
+        ⚙️ Config
+      </div>
+    </div>
   </div>
 
-  <!-- Video & Touch Viewport -->
+  <!-- Desktop Pointer Lock Notice -->
+  <div id="desktop-hint-banner">
+    <span>🖱️ Click anywhere on screen to capture mouse for CAD & Workstation. Press <b>ESC</b> to release.</span>
+  </div>
+
+  <!-- Video & Interactive Surface -->
   <div id="stream-viewport">
     <video id="remote-video" autoplay playsinline muted webkit-playsinline></video>
-    <div id="touch-surface"></div>
+    <div id="touch-surface" tabindex="0"></div>
     <div id="touch-pointer" class="touch-indicator" style="display:none;"></div>
   </div>
 
-  <!-- Bottom CAD Action Bar -->
+  <!-- Bottom Action Bar -->
   <div id="cad-toolbar">
     <button class="tool-btn active" id="btn-mode-direct" onclick="setInputMode('direct')">
       <span>👆 Direct</span>
     </button>
     <button class="tool-btn" id="btn-mode-trackpad" onclick="setInputMode('trackpad')">
       <span>🖱️ Pad</span>
+    </button>
+    <button class="tool-btn" id="btn-mode-desktop" onclick="setInputMode('desktop_kvm')">
+      <span>💻 PC KVM</span>
     </button>
     <button class="tool-btn" id="btn-cad-orbit" onpointerdown="startCadAction('orbit')" onpointerup="endCadAction('orbit')">
       <span>🔄 Orbit</span>
@@ -319,18 +392,21 @@
     <button class="tool-btn" onclick="sendHotkey(['ctrl', 'z'])">
       <span>↩️ Undo</span>
     </button>
+    <button class="tool-btn" onclick="sendHotkey(['ctrl', 's'])">
+      <span>💾 Save</span>
+    </button>
   </div>
 
   <!-- Setup / Configuration Modal -->
   <div id="connect-modal">
     <div id="connect-card">
-      <h2 style="font-size: 18px; margin-bottom: 8px;">WebRTC CAD Streamer</h2>
+      <h2 style="font-size: 18px; margin-bottom: 8px;">WebRTC Remote Desktop Client</h2>
       <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-        Connect your iPhone browser to your Windows 10 Host streamer.
+        Connect your iPhone, iPad, Mac, Windows, or Linux browser to your remote host workstation.
       </p>
 
       <div class="input-group">
-        <label>Signaling Server URL (Tailscale IP or Host URL):</label>
+        <label>Signaling Server URL (Tailscale IP or Host Address):</label>
         <input type="text" id="signal-url" class="input-field" value="" placeholder="http://100.x.y.z:3000 or http://localhost:3000" />
       </div>
 
@@ -340,14 +416,15 @@
       </div>
 
       <div class="input-group">
-        <label>Input Control Mode:</label>
-        <select id="default-mode-select" class="input-field">
-          <option value="direct">Direct Screen Touch (Tap = Click)</option>
-          <option value="trackpad">Virtual Trackpad (Relative Precision)</option>
+        <label>Primary Controller Profile:</label>
+        <select id="default-mode-select" class="input-field" onchange="setInputMode(this.value)">
+          <option value="direct">📱 Mobile: Direct Screen Touch (1:1 Coordinates)</option>
+          <option value="trackpad">📱 Mobile: Virtual Precision Trackpad</option>
+          <option value="desktop_kvm">💻 Desktop PC / Mac: Pointer Lock & Full Hardware Keyboard</option>
         </select>
       </div>
 
-      <button class="btn-primary" onclick="startWebRTCConnection()">Start Streaming</button>
+      <button class="btn-primary" onclick="startWebRTCConnection()">Connect & Stream Desktop</button>
     </div>
   </div>
 </div>
@@ -359,11 +436,11 @@
   let pc = null;
   let dataChannel = null;
   let ws = null;
-  let inputMode = 'direct'; // 'direct' | 'trackpad'
+  let inputMode = 'direct'; // 'direct' | 'trackpad' | 'desktop_kvm'
   let isConnected = false;
   let pingInterval = null;
-  let lastPingTime = 0;
   let hostResolution = { width: 1920, height: 1080 };
+  let isPointerLocked = false;
 
   // Trackpad state
   let lastTouchX = 0;
@@ -379,8 +456,15 @@
   const statusText = document.getElementById('status-text');
   const statsBox = document.getElementById('stats-box');
   const modal = document.getElementById('connect-modal');
+  const desktopBanner = document.getElementById('desktop-hint-banner');
+  const deviceModeLabel = document.getElementById('device-mode-label');
 
-  // Default signaling URL to current host if empty
+  // Detect if running on desktop browser
+  const isDesktopBrowser = !(/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+  if (isDesktopBrowser) {
+    inputMode = 'desktop_kvm';
+  }
+
   document.getElementById('signal-url').value = window.location.origin;
 
   function toggleConnectModal() {
@@ -396,7 +480,148 @@
     inputMode = mode;
     document.getElementById('btn-mode-direct').classList.toggle('active', mode === 'direct');
     document.getElementById('btn-mode-trackpad').classList.toggle('active', mode === 'trackpad');
+    document.getElementById('btn-mode-desktop').classList.toggle('active', mode === 'desktop_kvm');
+
+    if (mode === 'desktop_kvm') {
+      deviceModeLabel.textContent = '💻 Desktop KVM';
+      desktopBanner.style.display = 'flex';
+      touchSurface.focus();
+    } else if (mode === 'trackpad') {
+      deviceModeLabel.textContent = '🖱️ Trackpad';
+      desktopBanner.style.display = 'none';
+      if (document.pointerLockElement) document.exitPointerLock();
+    } else {
+      deviceModeLabel.textContent = '📱 Touch Direct';
+      desktopBanner.style.display = 'none';
+      if (document.pointerLockElement) document.exitPointerLock();
+    }
   }
+
+  function toggleDeviceMode() {
+    if (inputMode === 'direct') setInputMode('trackpad');
+    else if (inputMode === 'trackpad') setInputMode('desktop_kvm');
+    else setInputMode('direct');
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => console.log(err));
+    } else {
+      document.exitFullscreen();
+    }
+  }
+
+  async function pasteClientClipboard() {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          sendData({ type: 'clipboard_paste', text });
+          statsBox.textContent = 'Clipboard Sent!';
+        }
+      } else {
+        const text = prompt('Enter text to send to remote computer:');
+        if (text) sendData({ type: 'clipboard_paste', text });
+      }
+    } catch (e) {
+      const text = prompt('Enter text to send to remote computer:');
+      if (text) sendData({ type: 'clipboard_paste', text });
+    }
+  }
+
+  // -------------------------------------------------------------
+  // Pointer Lock (Desktop Mouse Capture)
+  // -------------------------------------------------------------
+  touchSurface.addEventListener('click', (e) => {
+    if (inputMode === 'desktop_kvm' && !document.pointerLockElement) {
+      touchSurface.requestPointerLock();
+    }
+  });
+
+  document.addEventListener('pointerlockchange', () => {
+    isPointerLocked = document.pointerLockElement === touchSurface;
+    touchSurface.classList.toggle('pointer-locked', isPointerLocked);
+    if (isPointerLocked) {
+      desktopBanner.innerHTML = '<span>🔒 <b>Mouse Captured</b>. Move naturally. Press <b>ESC</b> to release.</span>';
+    } else if (inputMode === 'desktop_kvm') {
+      desktopBanner.innerHTML = '<span>🖱️ Click anywhere on screen to capture mouse for CAD & Workstation. Press <b>ESC</b> to release.</span>';
+    }
+  });
+
+  // Desktop Mouse Listeners for KVM Mode
+  touchSurface.addEventListener('mousemove', (e) => {
+    if (inputMode === 'desktop_kvm') {
+      if (isPointerLocked) {
+        sendData({
+          type: 'mouse_relative',
+          dx: e.movementX,
+          dy: e.movementY,
+          sensitivity: 1.0
+        });
+      } else {
+        const coords = getNormalizedCoordinates(e.clientX, e.clientY);
+        sendData({ type: 'mousemove', x: coords.x, y: coords.y, normalized: true });
+      }
+    }
+  });
+
+  touchSurface.addEventListener('mousedown', (e) => {
+    if (inputMode === 'desktop_kvm') {
+      e.preventDefault();
+      const btnMap = { 0: 'left', 1: 'middle', 2: 'right' };
+      const button = btnMap[e.button] || 'left';
+      if (!isPointerLocked) {
+        const coords = getNormalizedCoordinates(e.clientX, e.clientY);
+        sendData({ type: 'mousedown', button, x: coords.x, y: coords.y, normalized: true });
+      } else {
+        sendData({ type: 'mousedown', button });
+      }
+    }
+  });
+
+  touchSurface.addEventListener('mouseup', (e) => {
+    if (inputMode === 'desktop_kvm') {
+      e.preventDefault();
+      const btnMap = { 0: 'left', 1: 'middle', 2: 'right' };
+      const button = btnMap[e.button] || 'left';
+      sendData({ type: 'mouseup', button });
+    }
+  });
+
+  touchSurface.addEventListener('contextmenu', (e) => {
+    if (inputMode === 'desktop_kvm') {
+      e.preventDefault();
+    }
+  });
+
+  touchSurface.addEventListener('wheel', (e) => {
+    if (inputMode === 'desktop_kvm') {
+      e.preventDefault();
+      sendData({
+        type: 'wheel',
+        deltaY: e.deltaY * -1,
+        deltaX: e.deltaX * -1
+      });
+    }
+  }, { passive: false });
+
+  // Full Hardware Keyboard Listener for Desktop KVM
+  window.addEventListener('keydown', (e) => {
+    if (inputMode === 'desktop_kvm' && (isPointerLocked || document.activeElement === touchSurface)) {
+      // Don't trap browser devtools or reload if not locked
+      if (e.key === 'F12') return;
+      if (['Tab', 'Alt', 'Control', 'Meta', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key) || e.ctrlKey || e.altKey || e.metaKey) {
+        e.preventDefault();
+      }
+      sendData({ type: 'keydown', key: e.key.toLowerCase() });
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (inputMode === 'desktop_kvm' && (isPointerLocked || document.activeElement === touchSurface)) {
+      sendData({ type: 'keyup', key: e.key.toLowerCase() });
+    }
+  });
 
   // -------------------------------------------------------------
   // WebRTC Client Connection & Signaling
@@ -406,9 +631,9 @@
     const roomId = document.getElementById('room-id').value.trim() || 'cad_session';
     modal.style.display = 'none';
 
+    setInputMode(inputMode);
     setStatus('Connecting...', 'connecting');
 
-    // 1. Create Peer Connection with public Google STUN servers
     const rtcConfig = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -419,29 +644,24 @@
     if (pc) pc.close();
     pc = new RTCPeerConnection(rtcConfig);
 
-    // 2. Handle Incoming Video Track
     pc.ontrack = (event) => {
-      console.log('[WebRTC] Received Remote Stream Track:', event.track.kind);
+      console.log('[WebRTC] Received Track:', event.track.kind);
       if (event.streams && event.streams[0]) {
         videoElem.srcObject = event.streams[0];
       } else {
-        const stream = new MediaStream([event.track]);
-        videoElem.srcObject = stream;
+        videoElem.srcObject = new MediaStream([event.track]);
       }
-      videoElem.play().catch(e => console.log('Autoplay handled:', e));
+      videoElem.play().catch(e => console.log('Play handled:', e));
     };
 
-    // 3. Handle DataChannel for mouse & CAD inputs
     pc.ondatachannel = (event) => {
-      console.log('[WebRTC] DataChannel received:', event.channel.label);
+      console.log('[WebRTC] Remote DataChannel received:', event.channel.label);
       setupDataChannel(event.channel);
     };
 
-    // Also proactively create a data channel in case client creates it
     const clientChannel = pc.createDataChannel('input_channel', { ordered: true });
     setupDataChannel(clientChannel);
 
-    // 4. WebSocket Signaling
     const wsUrl = rawUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
     console.log('[Signaling] Connecting to:', wsUrl);
 
@@ -449,17 +669,16 @@
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log('[Signaling] WebSocket Open. Joining room as CLIENT:', roomId);
+      console.log('[Signaling] WebSocket connected. Joining room as CLIENT:', roomId);
       ws.send(JSON.stringify({ type: 'join', role: 'client', roomId }));
     };
 
     ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data);
-        console.log('[Signaling] Inbound:', msg.type);
 
         if (msg.type === 'offer') {
-          console.log('[Signaling] Processing SDP Offer from Windows Host...');
+          console.log('[Signaling] Received Offer from Host');
           await pc.setRemoteDescription(new RTCSessionDescription({
             type: msg.sdpType || 'offer',
             sdp: msg.sdp
@@ -475,18 +694,17 @@
             sdp: answer.sdp,
             sdpType: answer.type
           }));
-          console.log('[Signaling] Sent SDP Answer to Windows Host.');
         }
 
         if (msg.type === 'candidate' && msg.candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
           } catch (e) {
-            console.warn('Error adding ICE candidate:', e);
+            console.warn('Error adding candidate:', e);
           }
         }
       } catch (err) {
-        console.error('Signaling parse error:', err);
+        console.error('Signaling error:', err);
       }
     };
 
@@ -502,9 +720,8 @@
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log('[ICE State]', pc.iceConnectionState);
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        setStatus('Live (Streaming)', 'connected');
+        setStatus('Live (Connected)', 'connected');
         isConnected = true;
         startLatencyMonitoring();
       } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
@@ -517,17 +734,22 @@
   function setupDataChannel(channel) {
     dataChannel = channel;
     dataChannel.onopen = () => {
-      console.log('[DataChannel] Input channel READY!');
+      console.log('[DataChannel] Input channel is OPEN!');
     };
     dataChannel.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'pong') {
           const rtt = Date.now() - msg.timestamp;
-          statsBox.textContent = `RTT: ${rtt}ms | CAD Ready`;
+          statsBox.textContent = `RTT: ${rtt}ms | ${msg.hostPlatform || 'Host'} Ready`;
         } else if (msg.type === 'host_ready') {
           hostResolution.width = msg.screenWidth || 1920;
           hostResolution.height = msg.screenHeight || 1080;
+        } else if (msg.type === 'clipboard_copy_response') {
+          if (msg.text && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(msg.text);
+            statsBox.textContent = 'Remote Clipboard Copied!';
+          }
         }
       } catch (err) {}
     };
@@ -553,7 +775,6 @@
   // -------------------------------------------------------------
   function getNormalizedCoordinates(clientX, clientY) {
     const rect = videoElem.getBoundingClientRect();
-    // Video might have letterboxing if aspect ratios differ
     const videoAspect = hostResolution.width / hostResolution.height;
     const containerAspect = rect.width / rect.height;
 
@@ -577,8 +798,9 @@
     return { x: normX, y: normY };
   }
 
-  // Touch Listeners
+  // Mobile Touch Listeners
   touchSurface.addEventListener('touchstart', (e) => {
+    if (inputMode === 'desktop_kvm') return;
     e.preventDefault();
     const touch = e.touches[0];
     touchStartTime = Date.now();
@@ -590,7 +812,6 @@
       isMultiTouch = false;
       const coords = getNormalizedCoordinates(touch.clientX, touch.clientY);
       
-      // Visual indicator
       pointerElem.style.display = 'block';
       pointerElem.style.left = touch.clientX + 'px';
       pointerElem.style.top = touch.clientY + 'px';
@@ -604,6 +825,7 @@
   }, { passive: false });
 
   touchSurface.addEventListener('touchmove', (e) => {
+    if (inputMode === 'desktop_kvm') return;
     e.preventDefault();
     if (e.touches.length === 1) {
       const touch = e.touches[0];
@@ -615,7 +837,6 @@
       if (inputMode === 'direct') {
         sendData({ type: 'mousemove', x: coords.x, y: coords.y, normalized: true });
       } else {
-        // Trackpad mode
         const dx = touch.clientX - lastTouchX;
         const dy = touch.clientY - lastTouchY;
         sendData({ type: 'mouserel', dx: dx, dy: dy, sensitivity: 1.2 });
@@ -624,7 +845,6 @@
       lastTouchX = touch.clientX;
       lastTouchY = touch.clientY;
     } else if (e.touches.length === 2) {
-      // Two finger scroll / pan
       const touch1 = e.touches[0];
       const dy = touch1.clientY - lastTouchY;
       sendData({ type: 'wheel', deltaY: dy * 3 });
@@ -633,6 +853,7 @@
   }, { passive: false });
 
   touchSurface.addEventListener('touchend', (e) => {
+    if (inputMode === 'desktop_kvm') return;
     e.preventDefault();
     const duration = Date.now() - touchStartTime;
     pointerElem.style.display = 'none';
@@ -641,13 +862,11 @@
       if (inputMode === 'direct') {
         sendData({ type: 'mouseup', button: 'left' });
       } else {
-        // Tap on trackpad
         if (duration < 250) {
           sendData({ type: 'click', button: 'left' });
         }
       }
     } else if (isMultiTouch && e.touches.length === 0) {
-      // Two finger tap = Right click
       if (duration < 300) {
         const coords = getNormalizedCoordinates(touchStartPos.x, touchStartPos.y);
         sendData({ type: 'click', button: 'right', x: coords.x, y: coords.y, normalized: true });

@@ -1,4 +1,4 @@
-# WebRTC Windows Host Dependencies
+# WebRTC Cross-Platform Host Dependencies (Windows, macOS, Linux)
 # Recommended Python version: 3.10, 3.11, or 3.12 (64-bit)
 
 aiortc>=1.9.0
@@ -9,3 +9,5 @@ pyautogui>=0.9.54
 websockets>=12.0
 aiohttp>=3.9.0
 opencv-python-headless>=4.9.0
+pyperclip>=1.8.2
+pynput>=1.7.6

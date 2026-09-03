@@ -25,9 +25,11 @@ import { StreamMetrics, TouchEventLog, KeyboardEventLog, NetworkProfile, AbrMetr
 
 export const LiveSimulator: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState<boolean>(true);
-  const [inputMode, setInputMode] = useState<'direct' | 'trackpad'>('direct');
+  const [inputMode, setInputMode] = useState<'direct' | 'trackpad' | 'desktop_kvm'>('direct');
   const [sensitivity, setSensitivity] = useState<number>(1.2);
   const [activeCadAction, setActiveCadAction] = useState<string | null>(null);
+  const [isPointerLockedSim, setIsPointerLockedSim] = useState<boolean>(false);
+  const [clipboardText, setClipboardText] = useState<string>('Sample CAD Part Specs');
   
   // Capture Engine Selection
   const [captureBackend, setCaptureBackend] = useState<'dxgi' | 'mss' | 'gdi' | 'pyautogui'>('dxgi');
@@ -485,7 +487,7 @@ export const LiveSimulator: React.FC = () => {
               <span className="text-slate-400 font-medium hidden sm:inline">Input:</span>
               <div className="bg-white/5 p-1 rounded-full border border-white/10 flex backdrop-blur-md">
                 <button
-                  onClick={() => setInputMode('direct')}
+                  onClick={() => { setInputMode('direct'); logEvent('mode_change', 'Switched to Direct Touch 1:1 input mode', 'system'); }}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                     inputMode === 'direct' ? 'bg-white/20 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                   }`}
@@ -493,12 +495,20 @@ export const LiveSimulator: React.FC = () => {
                   Direct Touch
                 </button>
                 <button
-                  onClick={() => setInputMode('trackpad')}
+                  onClick={() => { setInputMode('trackpad'); logEvent('mode_change', 'Switched to Virtual Trackpad mode', 'system'); }}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                     inputMode === 'trackpad' ? 'bg-white/20 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   CAD Trackpad
+                </button>
+                <button
+                  onClick={() => { setInputMode('desktop_kvm'); logEvent('mode_change', 'Switched to Desktop PC/Mac KVM (Pointer Lock & Hardware Keyboard)', 'system'); }}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    inputMode === 'desktop_kvm' ? 'bg-blue-500/30 text-blue-200 border border-blue-400/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  💻 Desktop KVM
                 </button>
               </div>
             </div>
@@ -892,6 +902,72 @@ export const LiveSimulator: React.FC = () => {
             <div className="pt-3 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-slate-400">
               <span>Channel: <strong className="text-emerald-400">input_channel</strong></span>
               <span>Mode: <strong className="text-blue-400">ordered:true</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Cross-Platform Workstation Control Matrix */}
+      <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-100 tracking-wide">
+                🖥️ Universal Cross-Platform Host & Client Matrix
+              </h3>
+              <p className="text-xs text-slate-400">
+                Effortlessly control any computer (Windows, macOS, Linux) from any other computer or mobile browser.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-mono font-semibold border border-emerald-500/30">
+            Native Zero-Install Client
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          {/* Windows Host */}
+          <div className="p-4 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-blue-300">🪟 Windows 10 / 11 Host</span>
+              <span className="text-[10px] font-mono text-emerald-400 font-semibold">&lt;1ms DXGI GPU</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Captures DirectX 11 GPU surface with hardware Direct3D duplication & Win32 SendInput.
+            </p>
+            <div className="bg-black/60 p-2 rounded-lg font-mono text-[11px] text-blue-200 border border-white/5 select-all">
+              run_host.bat
+            </div>
+          </div>
+
+          {/* macOS Host */}
+          <div className="p-4 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-300">🍎 Apple macOS Host</span>
+              <span className="text-[10px] font-mono text-emerald-400 font-semibold">M1/M2/M3/M4 & Intel</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Uses macOS CoreGraphics screen grabber, VideoToolbox H.264, and PyAutoGUI input injection.
+            </p>
+            <div className="bg-black/60 p-2 rounded-lg font-mono text-[11px] text-indigo-200 border border-white/5 select-all">
+              ./run_host.sh
+            </div>
+          </div>
+
+          {/* Linux Host */}
+          <div className="p-4 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-300">🐧 Linux (Ubuntu / Arch) Host</span>
+              <span className="text-[10px] font-mono text-emerald-400 font-semibold">X11 & Wayland</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Standard X11 memory buffer streamer with automated virtualenv & dependency bootstrap.
+            </p>
+            <div className="bg-black/60 p-2 rounded-lg font-mono text-[11px] text-amber-200 border border-white/5 select-all">
+              ./run_host.sh --fps 60
             </div>
           </div>
         </div>

@@ -10,11 +10,13 @@ export async function downloadProjectZip() {
   const dxgiCapture = CODE_FILES.find((f) => f.id === 'dxgi_capture')?.content || '';
   const reqs = CODE_FILES.find((f) => f.id === 'requirements')?.content || '';
   const bat = CODE_FILES.find((f) => f.id === 'batch_script')?.content || '';
+  const sh = CODE_FILES.find((f) => f.id === 'sh_script')?.content || '';
 
   hostFolder?.file('windows_host.py', windowsHost);
   hostFolder?.file('dxgi_capture.py', dxgiCapture);
   hostFolder?.file('requirements.txt', reqs);
   hostFolder?.file('run_host.bat', bat);
+  hostFolder?.file('run_host.sh', sh);
 
   // Signaling folder
   const signalingFolder = zip.folder('signaling');
