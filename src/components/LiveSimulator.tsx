@@ -25,6 +25,7 @@ import { StreamMetrics, TouchEventLog, KeyboardEventLog, NetworkProfile, AbrMetr
 
 export const LiveSimulator: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState<boolean>(true);
+  const [showParsecOverlay, setShowParsecOverlay] = useState<boolean>(false);
   const [inputMode, setInputMode] = useState<'direct' | 'trackpad' | 'desktop_kvm'>('direct');
   const [sensitivity, setSensitivity] = useState<number>(1.2);
   const [activeCadAction, setActiveCadAction] = useState<string | null>(null);
@@ -466,154 +467,170 @@ export const LiveSimulator: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Stream Status & Controls Bar */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Stream & Input Mode */}
-        <div className="lg:col-span-7 bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setIsStreaming(!isStreaming)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-full font-semibold text-xs transition-all backdrop-blur-md cursor-pointer ${
-                isStreaming
-                  ? 'bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.2)]'
-                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 shadow-[0_0_12px_rgba(34,197,94,0.25)]'
-              }`}
-            >
-              {isStreaming ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-              <span>{isStreaming ? 'Pause Stream' : 'Start Live Stream'}</span>
-            </button>
-
-            <div className="flex items-center space-x-2 text-xs">
-              <span className="text-slate-400 font-medium hidden sm:inline">Input:</span>
-              <div className="bg-white/5 p-1 rounded-full border border-white/10 flex backdrop-blur-md">
-                <button
-                  onClick={() => { setInputMode('direct'); logEvent('mode_change', 'Switched to Direct Touch 1:1 input mode', 'system'); }}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                    inputMode === 'direct' ? 'bg-white/20 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Direct Touch
-                </button>
-                <button
-                  onClick={() => { setInputMode('trackpad'); logEvent('mode_change', 'Switched to Virtual Trackpad mode', 'system'); }}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                    inputMode === 'trackpad' ? 'bg-white/20 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  CAD Trackpad
-                </button>
-                <button
-                  onClick={() => { setInputMode('desktop_kvm'); logEvent('mode_change', 'Switched to Desktop PC/Mac KVM (Pointer Lock & Hardware Keyboard)', 'system'); }}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                    inputMode === 'desktop_kvm' ? 'bg-blue-500/30 text-blue-200 border border-blue-400/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  💻 Desktop KVM
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Metrics Badges */}
-          <div className="flex items-center space-x-2 text-xs font-mono">
-            <div className="px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-slate-300 flex items-center space-x-1.5 shadow-sm">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#22c55e]" />
-              <span>RTT: {abr.rttMs}ms</span>
-            </div>
-            <div className="px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-slate-300">
-              <span className="text-emerald-400 font-bold">{abr.targetFps}</span> FPS
-            </div>
-          </div>
-        </div>
-
-        {/* Screen Capture Backend Selector */}
-        <div className="lg:col-span-5 bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col justify-center space-y-1.5 shadow-xl">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400 flex items-center space-x-1.5 font-medium">
-              <Cpu className="w-3.5 h-3.5 text-blue-400" />
-              <span>Capture Engine:</span>
-            </span>
-            <span className="text-emerald-400 font-mono font-bold text-[11px]">
-              {abr.frameCaptureMs}ms Latency
-            </span>
-          </div>
-          <div className="grid grid-cols-4 gap-1.5 pt-1">
-            <button
-              onClick={() => {
-                setCaptureBackend('dxgi');
-                logEvent('capture_switch', 'Switched to DXGI Desktop Duplication API (<1ms GPU VRAM)', 'system');
-              }}
-              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
-                captureBackend === 'dxgi'
-                  ? 'bg-blue-500/30 text-blue-300 border-blue-400/50 shadow-[0_0_10px_rgba(59,130,246,0.3)]'
-                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
-              }`}
-            >
-              DXGI
-            </button>
-            <button
-              onClick={() => {
-                setCaptureBackend('mss');
-                logEvent('capture_switch', 'Switched to MSS DIB section capture (~5.2ms)', 'system');
-              }}
-              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
-                captureBackend === 'mss'
-                  ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400/50 shadow-[0_0_10px_rgba(34,197,94,0.3)]'
-                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
-              }`}
-            >
-              MSS
-            </button>
-            <button
-              onClick={() => {
-                setCaptureBackend('gdi');
-                logEvent('capture_switch', 'Switched to Windows GDI BitBlt (~18.5ms)', 'system');
-              }}
-              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
-                captureBackend === 'gdi'
-                  ? 'bg-amber-500/30 text-amber-300 border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.3)]'
-                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
-              }`}
-            >
-              GDI
-            </button>
-            <button
-              onClick={() => {
-                setCaptureBackend('pyautogui');
-                logEvent('capture_switch', 'Switched to PyAutoGUI PIL Screenshot (~42ms - Bottleneck)', 'system');
-              }}
-              className={`px-2 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all border ${
-                captureBackend === 'pyautogui'
-                  ? 'bg-red-500/30 text-red-300 border-red-400/50 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
-                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
-              }`}
-            >
-              PyAuto
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Adaptive Bitrate (ABR) Network Conditioner Bar */}
-      <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-xl space-y-3">
+      {/* My Remote Computers Bar (Chrome Remote Desktop / Moonlight style) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
-              <Zap className="w-4 h-4" />
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30">
+              <Layers className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                Adaptive Bitrate (ABR) Network Simulation & Auto-Scaling
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Host AI/controller dynamically throttles bitrate, framerate, and CRF compression based on client feedback.
+              <h2 className="text-sm font-semibold text-slate-100">
+                My Remote Computers
+              </h2>
+              <p className="text-xs text-slate-400">
+                Select a workstation to start an ultra-low latency streaming session.
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
-            <span className="text-[11px] text-slate-400">Network Condition:</span>
-            <div className="bg-white/5 p-1 rounded-full border border-white/10 flex backdrop-blur-md">
+            <input
+              type="text"
+              placeholder="Enter 6-Digit PIN (e.g. 842-109)"
+              className="bg-slate-950 border border-slate-800 text-xs px-3 py-1.5 rounded-lg text-slate-200 focus:outline-none focus:border-blue-500 w-52 font-mono"
+            />
+            <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-all">
+              Pair Device
+            </button>
+          </div>
+        </div>
+
+        {/* Computers Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div className="p-3.5 bg-slate-950 border border-blue-500/40 rounded-lg flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              <div>
+                <div className="text-xs font-semibold text-slate-100">CAD Workstation Pro</div>
+                <div className="text-[11px] text-slate-400">Windows 11 • RTX 4080 (DXGI)</div>
+              </div>
+            </div>
+            <span className="text-[10px] bg-blue-600/20 text-blue-300 font-medium px-2 py-1 rounded border border-blue-500/30">
+              Connected
+            </span>
+          </div>
+
+          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
+            <div className="flex items-center space-x-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              <div>
+                <div className="text-xs font-semibold text-slate-100">MacBook Pro M3</div>
+                <div className="text-[11px] text-slate-400">macOS Sonoma • CoreGraphics</div>
+              </div>
+            </div>
+            <button className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-2.5 py-1 rounded border border-slate-700">
+              Connect
+            </button>
+          </div>
+
+          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
+            <div className="flex items-center space-x-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+              <div>
+                <div className="text-xs font-semibold text-slate-100">Linux Render Node</div>
+                <div className="text-[11px] text-slate-400">Ubuntu 24.04 • X11 Stream</div>
+              </div>
+            </div>
+            <button className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-2.5 py-1 rounded border border-slate-700">
+              Connect
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stream Controls Toolbar & Input Modes */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setIsStreaming(!isStreaming)}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg font-medium text-xs transition-all cursor-pointer ${
+              isStreaming
+                ? 'bg-rose-600/20 text-rose-300 border border-rose-500/30 hover:bg-rose-600/30'
+                : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30'
+            }`}
+          >
+            {isStreaming ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            <span>{isStreaming ? 'Disconnect Stream' : 'Connect Stream'}</span>
+          </button>
+
+          <div className="flex items-center space-x-1.5 text-xs">
+            <span className="text-slate-400 text-xs mr-1 hidden sm:inline">Input Mode:</span>
+            <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex">
+              <button
+                onClick={() => { setInputMode('direct'); logEvent('mode_change', 'Switched to Direct Touch 1:1 input mode', 'system'); }}
+                className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                  inputMode === 'direct' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Touch
+              </button>
+              <button
+                onClick={() => { setInputMode('trackpad'); logEvent('mode_change', 'Switched to Virtual Trackpad mode', 'system'); }}
+                className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                  inputMode === 'trackpad' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Trackpad
+              </button>
+              <button
+                onClick={() => { setInputMode('desktop_kvm'); logEvent('mode_change', 'Switched to Desktop PC/Mac KVM (Pointer Lock)', 'system'); }}
+                className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                  inputMode === 'desktop_kvm' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Desktop KVM
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Capture Backend Engine Selection */}
+        <div className="flex items-center space-x-2 text-xs">
+          <span className="text-slate-400 font-medium">Capture Engine:</span>
+          <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex space-x-1">
+            <button
+              onClick={() => { setCaptureBackend('dxgi'); logEvent('capture_switch', 'Switched to DXGI Desktop Duplication API', 'system'); }}
+              className={`px-2.5 py-1 rounded text-[11px] font-mono font-medium ${captureBackend === 'dxgi' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              DXGI (GPU)
+            </button>
+            <button
+              onClick={() => { setCaptureBackend('mss'); logEvent('capture_switch', 'Switched to MSS DIB capture', 'system'); }}
+              className={`px-2.5 py-1 rounded text-[11px] font-mono font-medium ${captureBackend === 'mss' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              MSS
+            </button>
+            <button
+              onClick={() => { setCaptureBackend('gdi'); logEvent('capture_switch', 'Switched to Windows GDI BitBlt', 'system'); }}
+              className={`px-2.5 py-1 rounded text-[11px] font-mono font-medium ${captureBackend === 'gdi' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              GDI
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Adaptive Network Conditioner Bar */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
+                Network Profile & Auto-Bitrate
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Automatically adjusts stream quality based on network speed.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="text-xs text-slate-400">Preset:</span>
+            <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex">
               {(['ultra_lan', 'wifi_5g', 'lte_mobile', 'congested'] as NetworkProfile[]).map((p) => (
                 <button
                   key={p}
@@ -621,44 +638,44 @@ export const LiveSimulator: React.FC = () => {
                     setNetworkProfile(p);
                     logEvent('abr_profile_change', `Simulated network shift to: ${p.toUpperCase()}`, 'abr');
                   }}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  className={`px-3 py-1 rounded text-xs font-medium transition-all ${
                     networkProfile === p
-                      ? 'bg-blue-500/80 text-white shadow-sm font-semibold'
+                      ? 'bg-blue-600 text-white shadow-sm font-medium'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  {p === 'ultra_lan' ? 'Ultra LAN' : p === 'wifi_5g' ? '5G / Fast Wi-Fi' : p === 'lte_mobile' ? 'LTE 4G' : 'Congested (Loss)'}
+                  {p === 'ultra_lan' ? 'Ultra LAN' : p === 'wifi_5g' ? '5G Wi-Fi' : p === 'lte_mobile' ? '4G LTE' : 'Slow Network'}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Live ABR Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1">
-          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
-            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Active ABR Tier</span>
-            <span className="text-xs font-bold text-blue-300 font-mono">{abr.networkTier}</span>
+        {/* Live Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase font-medium">Quality Tier</span>
+            <span className="text-xs font-semibold text-blue-300 font-mono">{abr.networkTier}</span>
           </div>
-          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
-            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Target Bitrate</span>
-            <span className="text-xs font-bold text-emerald-400 font-mono">{(abr.targetBitrateKbps / 1000).toFixed(1)} Mbps</span>
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase font-medium">Bitrate</span>
+            <span className="text-xs font-semibold text-emerald-400 font-mono">{(abr.targetBitrateKbps / 1000).toFixed(1)} Mbps</span>
           </div>
-          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
-            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Target FPS</span>
-            <span className="text-xs font-bold text-slate-200 font-mono">{abr.targetFps} FPS</span>
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase font-medium">Frame Rate</span>
+            <span className="text-xs font-semibold text-slate-200 font-mono">{abr.targetFps} FPS</span>
           </div>
-          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
-            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Resolution Scale</span>
-            <span className="text-xs font-bold text-slate-200 font-mono">{(abr.scaleFactor * 100).toFixed(0)}% (1080p)</span>
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase font-medium">Resolution</span>
+            <span className="text-xs font-semibold text-slate-200 font-mono">{(abr.scaleFactor * 100).toFixed(0)}% (1080p)</span>
           </div>
-          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
-            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">H.264 CRF Value</span>
-            <span className="text-xs font-bold text-amber-300 font-mono">{abr.compressionCrf} (Constant Rate)</span>
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase font-medium">Encoder Quality</span>
+            <span className="text-xs font-semibold text-amber-300 font-mono">CRF {abr.compressionCrf}</span>
           </div>
-          <div className="p-3 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 text-center">
-            <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Total End-to-End Latency</span>
-            <span className="text-xs font-bold text-emerald-300 font-mono">{totalEndToEndLatencyMs} ms</span>
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 block uppercase font-medium">Latency</span>
+            <span className="text-xs font-semibold text-emerald-300 font-mono">{totalEndToEndLatencyMs} ms</span>
           </div>
         </div>
       </div>
@@ -682,6 +699,85 @@ export const LiveSimulator: React.FC = () => {
               height={540}
               className="w-full h-full object-contain"
             />
+
+            {/* Parsec Iconic Floating Overlay Button */}
+            <div className="absolute top-3 left-3 z-30">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowParsecOverlay(!showParsecOverlay);
+                }}
+                className="w-10 h-10 rounded-full bg-rose-600 hover:bg-rose-500 text-white font-black text-xs border border-rose-400/50 shadow-[0_0_20px_rgba(244,63,94,0.6)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer"
+                title="Toggle Parsec Stream Overlay (Ctrl+Alt+I)"
+              >
+                P
+              </button>
+            </div>
+
+            {/* Parsec In-Stream Overlay Drawer */}
+            {showParsecOverlay && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute inset-x-4 top-16 z-40 bg-[#131622]/95 backdrop-blur-2xl border border-rose-500/40 rounded-2xl p-5 shadow-2xl space-y-4 animate-fade-in text-slate-100"
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-[#282d42]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-6 h-6 rounded-full bg-rose-600 flex items-center justify-center font-bold text-xs">P</div>
+                    <h3 className="font-bold text-sm text-white">PARSEC STREAM OVERLAY & MENU</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowParsecOverlay(false)}
+                    className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1 bg-slate-800 rounded"
+                  >
+                    Close (ESC)
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  {/* Performance Badge */}
+                  <div className="p-3 bg-[#0b0c13] rounded-lg border border-[#262b3f] space-y-1">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">Stream Health</div>
+                    <div className="font-mono text-emerald-400 font-bold">{abr.targetFps} FPS • {totalEndToEndLatencyMs}ms RTT</div>
+                    <div className="text-[10px] text-slate-500">NVENC H.265 (4K 120Hz Engine)</div>
+                  </div>
+
+                  {/* Immersive Mouse Lock Toggle */}
+                  <div className="p-3 bg-[#0b0c13] rounded-lg border border-[#262b3f] space-y-1">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">Immersive Mouse Mode</div>
+                    <button
+                      onClick={() => setIsPointerLockedSim(!isPointerLockedSim)}
+                      className={`w-full py-1.5 rounded font-bold text-[11px] transition-all cursor-pointer ${
+                        isPointerLockedSim
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'bg-rose-600 hover:bg-rose-500 text-white'
+                      }`}
+                    >
+                      {isPointerLockedSim ? '✓ Mouse Pointer Locked (Relative)' : 'Lock Mouse for 3D/Games'}
+                    </button>
+                  </div>
+
+                  {/* Virtual Gamepad Status */}
+                  <div className="p-3 bg-[#0b0c13] rounded-lg border border-[#262b3f] space-y-1">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">Virtual Gamepad</div>
+                    <div className="text-blue-400 font-semibold text-[11px]">Xbox Wireless Controller (XInput Slot 1)</div>
+                    <div className="text-[10px] text-slate-500">Analogs & Triggers Passthrough Active</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-[#282d42]">
+                  <span className="text-[11px] text-slate-400 font-mono">Press Ctrl+Alt+I anytime to toggle overlay</span>
+                  <button
+                    onClick={() => {
+                      setIsStreaming(false);
+                      setShowParsecOverlay(false);
+                    }}
+                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg shadow-md"
+                  >
+                    Disconnect Stream
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Active Mode Overlay Badge */}
             {activeCadAction && (

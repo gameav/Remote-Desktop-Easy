@@ -1,7 +1,6 @@
 {
-  "name": "WebRTC Remote Desktop (CAD & Low-Latency)",
-  "description": "Ultra-low latency self-hosted WebRTC remote desktop architecture for Windows 10 host, iPhone mobile browser client, signaling server, and Tailscale VPN setup for remote CAD workflows.",
+  "name": "PulseGrid Remote Desktop",
+  "description": "100% Free ultra-low latency remote desktop and game streaming. Connect seamlessly via 6-digit PIN or Web Link on PC, Mac, Linux, iPhone, iPad, and Android.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
-

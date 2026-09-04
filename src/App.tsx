@@ -1,75 +1,146 @@
 import React, { useState } from 'react';
-import { NavigationTab } from './types';
+import { SidebarView, RemoteComputer, ArcadeLobby } from './types';
 import { Header } from './components/Header';
+import { ParsecComputers } from './components/ParsecComputers';
+import { ParsecArcade } from './components/ParsecArcade';
 import { LiveSimulator } from './components/LiveSimulator';
-import { CodeExplorer } from './components/CodeExplorer';
-import { TailscaleGuide } from './components/TailscaleGuide';
-import { OptimizationGuide } from './components/OptimizationGuide';
-import { StandaloneClientPreview } from './components/StandaloneClientPreview';
-import { 
-  Download, 
-  ShieldCheck, 
-  Sparkles, 
-  Zap, 
-  Laptop, 
-  Smartphone,
-  Flame,
-  Activity
-} from 'lucide-react';
-import { downloadProjectZip } from './utils/zipGenerator';
+import { ParsecSettings } from './components/ParsecSettings';
+import { ParsecDownloads } from './components/ParsecDownloads';
+import { PulseGridWebViewer } from './components/PulseGridWebViewer';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<NavigationTab>('simulator');
+  const [activeView, setActiveView] = useState<SidebarView>('computers');
+  const [selectedComputer, setSelectedComputer] = useState<RemoteComputer | null>(null);
+
+  const initialComputers: RemoteComputer[] = [
+    {
+      id: 'desktop-ikqdnup',
+      name: 'DESKTOP-IKQDNUP',
+      os: 'windows',
+      gpu: 'NVIDIA RTX 4090 (24GB VRAM)',
+      resolution: '3840x2160',
+      maxFps: 120,
+      status: 'online',
+      pingMs: 8,
+      peerId: '3l8x9k',
+      pairingPin: '842-109',
+      shareUrl: 'https://pulsegrid.app/g/3l8x9k',
+      isHost: true,
+      encoder: 'NVENC (NVIDIA)',
+      lastActive: 'Active Now'
+    },
+    {
+      id: 'mac-pro-m3',
+      name: 'MACBOOK-PRO-M3-MAX',
+      os: 'mac',
+      gpu: 'Apple M3 Max GPU (40-Core)',
+      resolution: '3024x1964',
+      maxFps: 60,
+      status: 'online',
+      pingMs: 14,
+      peerId: '512-990',
+      pairingPin: '512-990',
+      shareUrl: 'https://pulsegrid.app/g/512990',
+      isHost: false,
+      encoder: 'Metal (Apple)',
+      lastActive: 'Active Now'
+    },
+    {
+      id: 'linux-render-node',
+      name: 'LINUX-RENDER-WORKSTATION',
+      os: 'linux',
+      gpu: 'AMD Radeon RX 7900 XTX',
+      resolution: '2560x1440',
+      maxFps: 60,
+      status: 'online',
+      pingMs: 22,
+      peerId: '773-102',
+      pairingPin: '773-102',
+      shareUrl: 'https://pulsegrid.app/g/773102',
+      isHost: false,
+      encoder: 'AMF (AMD)',
+      lastActive: 'Active Now'
+    }
+  ];
+
+  const handleConnect = (computer: RemoteComputer) => {
+    setSelectedComputer(computer);
+    setActiveView('stream');
+  };
+
+  const handleJoinArcade = (lobby: ArcadeLobby) => {
+    setSelectedComputer({
+      id: lobby.id,
+      name: `${lobby.game} (${lobby.title})`,
+      os: 'windows',
+      gpu: 'NVIDIA RTX 4090 (Arcade Host)',
+      resolution: '1920x1080',
+      maxFps: 60,
+      status: 'online',
+      pingMs: lobby.pingMs,
+      peerId: 'ARCADE-LOBBY-60FPS',
+      pairingPin: '990-112',
+      shareUrl: 'https://pulsegrid.app/g/arcade',
+      isHost: false,
+      encoder: 'NVENC (NVIDIA)',
+      lastActive: 'Just now'
+    });
+    setActiveView('stream');
+  };
+
+  const handleStartWebStream = (pinOrLink: string) => {
+    setSelectedComputer({
+      id: 'web-session',
+      name: `Safari Session (${pinOrLink})`,
+      os: 'windows',
+      gpu: 'NVIDIA RTX 4090 (WebRTC Host)',
+      resolution: '1920x1080',
+      maxFps: 60,
+      status: 'online',
+      pingMs: 12,
+      peerId: pinOrLink,
+      pairingPin: pinOrLink,
+      shareUrl: pinOrLink.startsWith('http') ? pinOrLink : `https://pulsegrid.app/join/${pinOrLink}`,
+      isHost: false,
+      encoder: 'NVENC (NVIDIA)',
+      lastActive: 'Just now'
+    });
+    setActiveView('stream');
+  };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col font-sans selection:bg-blue-600/30 selection:text-blue-200 relative overflow-x-hidden">
-      {/* Frosted Glass Ambient Backdrop Glow Orbs */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[55%] h-[55%] bg-blue-900/25 rounded-full blur-[140px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[55%] h-[55%] bg-indigo-900/20 rounded-full blur-[140px]" />
-        <div className="absolute top-[40%] right-[20%] w-[35%] h-[35%] bg-cyan-900/15 rounded-full blur-[160px]" />
-      </div>
+    <Header activeView={activeView} setActiveView={setActiveView}>
+      {activeView === 'computers' && (
+        <ParsecComputers
+          computers={initialComputers}
+          onConnect={handleConnect}
+          onSelectWebViewer={() => setActiveView('web_client')}
+        />
+      )}
 
-      {/* Top Header Navigation with Frosted Glass styling */}
-      <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        isStreaming={true}
-      />
+      {activeView === 'settings' && (
+        <ParsecSettings />
+      )}
 
-      {/* Main Content Area */}
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {activeTab === 'simulator' && <LiveSimulator />}
-        {activeTab === 'code' && <CodeExplorer />}
-        {activeTab === 'client-preview' && <StandaloneClientPreview />}
-        {activeTab === 'tailscale' && <TailscaleGuide />}
-        {activeTab === 'optimizations' && <OptimizationGuide />}
-      </main>
+      {activeView === 'web_client' && (
+        <PulseGridWebViewer
+          onStartWebStream={handleStartWebStream}
+        />
+      )}
 
-      {/* Frosted Glass Footer */}
-      <footer className="relative z-10 border-t border-white/10 bg-black/40 backdrop-blur-xl py-5 text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#22c55e]" />
-            <span className="text-slate-300 font-semibold tracking-wide text-xs">
-              WebRTC Low-Latency Architecture Hub
-            </span>
-            <span className="text-white/20">|</span>
-            <span className="text-slate-400 text-[11px] font-mono">STREAMING: H.264 / WebRTC / OPUS</span>
-          </div>
+      {activeView === 'arcade' && (
+        <ParsecArcade
+          onJoinLobby={handleJoinArcade}
+        />
+      )}
 
-          <div className="flex items-center space-x-4">
-            <span className="text-[11px] font-mono text-slate-500 hidden md:inline">ENCRYPTED P2P TUNNEL (TAILSCALE)</span>
-            <button
-              onClick={downloadProjectZip}
-              className="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-sm active:scale-95"
-            >
-              <Download className="w-3.5 h-3.5 text-blue-400" />
-              <span>Download Boilerplate (.ZIP)</span>
-            </button>
-          </div>
-        </div>
-      </footer>
-    </div>
+      {activeView === 'stream' && (
+        <LiveSimulator />
+      )}
+
+      {activeView === 'downloads' && (
+        <ParsecDownloads />
+      )}
+    </Header>
   );
 }

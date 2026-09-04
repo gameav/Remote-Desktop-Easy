@@ -1,17 +1,87 @@
-export type NavigationTab = 
-  | 'simulator' 
-  | 'code' 
-  | 'tailscale' 
-  | 'optimizations' 
-  | 'client-preview';
+export type SidebarView = 
+  | 'computers' 
+  | 'settings' 
+  | 'arcade'
+  | 'stream' 
+  | 'downloads'
+  | 'web_client';
 
-export interface CodeFileItem {
+export type SettingsSubTab = 
+  | 'client' 
+  | 'host' 
+  | 'approved_apps' 
+  | 'network' 
+  | 'hotkeys' 
+  | 'gamepad' 
+  | 'experimental' 
+  | 'account';
+
+export type ConnectMethod = 'app_pin' | 'web_link';
+
+export interface RemoteComputer {
   id: string;
   name: string;
-  language: string;
-  category: 'host' | 'signaling' | 'client' | 'script';
-  description: string;
-  content: string;
+  os: 'windows' | 'mac' | 'linux';
+  gpu: string;
+  resolution: string;
+  maxFps: number;
+  status: 'online' | 'offline' | 'busy';
+  pingMs: number;
+  peerId: string;
+  pairingPin: string;
+  shareUrl: string;
+  isHost: boolean;
+  encoder: 'NVENC (NVIDIA)' | 'AMF (AMD)' | 'QuickSync (Intel)' | 'Metal (Apple)' | 'Software (CPU)';
+  avatarUrl?: string;
+  lastActive: string;
+}
+
+export interface FriendUser {
+  id: string;
+  username: string;
+  tag: string;
+  status: 'online' | 'in_game' | 'offline';
+  gamePlaying?: string;
+  avatar: string;
+}
+
+export interface ArcadeLobby {
+  id: string;
+  title: string;
+  game: string;
+  hostUser: string;
+  playersCount: number;
+  maxPlayers: number;
+  pingMs: number;
+  tags: string[];
+  coverImage: string;
+  hasControllersAvailable: boolean;
+  requiredController: string;
+}
+
+export interface PulseGridSettings {
+  // Host
+  hostingEnabled: boolean;
+  hostResolution: string;
+  hostFps: number;
+  hostBitrateMbps: number;
+  encoderType: 'nvenc' | 'amf' | 'quicksync' | 'metal' | 'software';
+  virtualDisplay: boolean;
+  audioPassthrough: boolean;
+  // Client
+  decoderType: 'hardware' | 'software';
+  vsync: boolean;
+  immersiveMouseMode: 'relative' | 'absolute';
+  overlayHotkey: string;
+  bandwidthLimitMbps: number;
+  enhancedPen: boolean;
+  overlay: boolean;
+  overlayWarnings: boolean;
+  hidCompatibility: boolean;
+  // Network
+  upnpEnabled: boolean;
+  stunServer: string;
+  tailscaleEnabled: boolean;
 }
 
 export type NetworkProfile = 'ultra_lan' | 'wifi_5g' | 'lte_mobile' | 'congested';
@@ -39,38 +109,5 @@ export interface StreamMetrics {
   codec: string;
   state: 'disconnected' | 'connecting' | 'connected';
   abrTier?: string;
-  captureBackend?: 'DXGI Desktop Duplication' | 'MSS DIB' | 'Windows GDI' | 'PyAutoGUI';
-}
-
-export interface TouchEventLog {
-  id: string;
-  timestamp: string;
-  type: string;
-  x: number;
-  y: number;
-  details: string;
-}
-
-export interface KeyboardEventLog {
-  id: string;
-  timestamp: string;
-  type: 'keydown' | 'keyup' | 'keypress' | 'hotkey';
-  key: string;
-  code: string;
-  modifiers: {
-    ctrl: boolean;
-    shift: boolean;
-    alt: boolean;
-    meta: boolean;
-  };
-  details: string;
-}
-
-export interface CadToolAction {
-  id: string;
-  label: string;
-  icon: string;
-  actionType: string;
-  shortcut: string;
-  description: string;
+  captureBackend?: string;
 }
