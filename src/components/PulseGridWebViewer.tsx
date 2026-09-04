@@ -26,7 +26,8 @@ export const PulseGridWebViewer: React.FC<WebViewerProps> = ({ onStartWebStream 
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeDeviceTab, setActiveDeviceTab] = useState<'iphone' | 'ipad' | 'browser'>('iphone');
 
-  const webLink = `https://pulsegrid.app/join/${pinCode}`;
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://pulsegrid.app';
+  const webLink = `${currentOrigin}/?join=${pinCode}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(webLink);

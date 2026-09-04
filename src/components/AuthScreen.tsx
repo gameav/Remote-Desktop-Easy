@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AuthUser } from '../types';
+import { hashPassword, encryptVault, decryptVault } from '../lib/security';
 import { 
   Lock, 
   Mail, 
@@ -18,6 +19,13 @@ interface AuthScreenProps {
   onLogin: (user: AuthUser) => void;
 }
 
+interface EncryptedAccountRecord {
+  email: string;
+  passwordHash: string; // SHA-256 Hashed
+  username: string;
+  tag: string;
+}
+
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
@@ -25,31 +33,166 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleAuth = (e: React.FormEvent) => {
+  // Retrieve & decrypt registered accounts vault
+  const getRegisteredAccountsVault = async (): Promise<EncryptedAccountRecord[]> => {
+    try {
+      const encryptedStored = localStorage.getItem('pulsegrid_vault_encrypted');
+      if (encryptedStored) {
+        const decrypted = decryptVault<EncryptedAccountRecord[]>(encryptedStored);
+        if (decrypted && Array.isArray(decrypted)) {
+          return decrypted;
+        }
+      }
+
+      // Check legacy store if present and migrate
+      const legacyStored = localStorage.getItem('pulsegrid_registered_accounts');
+      let baseAccounts: EncryptedAccountRecord[] = [];
+
+      if (legacyStored) {
+        try {
+          const parsedLegacy = JSON.parse(legacyStored);
+          if (Array.isArray(parsedLegacy)) {
+            for (const item of parsedLegacy) {
+              const hash = await hashPassword(item.password || 'password123');
+              baseAccounts.push({
+                email: item.email,
+                passwordHash: hash,
+                username: item.username,
+                tag: item.tag
+              });
+            }
+          }
+        } catch {}
+        localStorage.removeItem('pulsegrid_registered_accounts');
+      }
+
+      if (baseAccounts.length === 0) {
+        // Seed default encrypted account
+        const defaultHash = await hashPassword('password123');
+        baseAccounts = [
+          {
+            email: 'anayvoratutor@gmail.com',
+            passwordHash: defaultHash,
+            username: 'dashav100',
+            tag: '20273089'
+          }
+        ];
+      }
+
+      // Save encrypted vault
+      const cipher = encryptVault(baseAccounts);
+      localStorage.setItem('pulsegrid_vault_encrypted', cipher);
+      return baseAccounts;
+    } catch {
+      return [];
+    }
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setSuccessMsg('');
 
-    if (!email || !password) {
-      setErrorMsg('Please enter your email and password.');
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    if (!cleanEmail || !cleanPassword) {
+      setErrorMsg('Please enter both your email address and password.');
       return;
     }
 
-    const cleanUsername = isSignUp ? (username.trim() || email.split('@')[0]) : (username.trim() || email.split('@')[0]);
-    const randomTag = Math.floor(10000000 + Math.random() * 90000000).toString();
-
-    const authenticatedUser: AuthUser = {
-      username: cleanUsername,
-      tag: randomTag,
-      email: email,
-      isGuest: false
-    };
-
-    if (rememberMe) {
-      localStorage.setItem('pulsegrid_user', JSON.stringify(authenticatedUser));
+    if (!cleanEmail.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
     }
 
-    onLogin(authenticatedUser);
+    setIsProcessing(true);
+
+    try {
+      const accounts = await getRegisteredAccountsVault();
+      const enteredPasswordHash = await hashPassword(cleanPassword);
+
+      if (isSignUp) {
+        // --- SIGN UP LOGIC ---
+        if (cleanPassword.length < 4) {
+          setErrorMsg('Password must be at least 4 characters long.');
+          setIsProcessing(false);
+          return;
+        }
+
+        const existingAccount = accounts.find(acc => acc.email === cleanEmail);
+        if (existingAccount) {
+          setErrorMsg('An account with this email already exists. Please click "Sign In".');
+          setIsProcessing(false);
+          return;
+        }
+
+        const cleanUsername = username.trim() || cleanEmail.split('@')[0];
+        const newTag = Math.floor(10000000 + Math.random() * 90000000).toString();
+
+        const newAccount: EncryptedAccountRecord = {
+          email: cleanEmail,
+          passwordHash: enteredPasswordHash,
+          username: cleanUsername,
+          tag: newTag
+        };
+
+        accounts.push(newAccount);
+
+        // Encrypt whole list with AES cipher before storing
+        const cipherPayload = encryptVault(accounts);
+        localStorage.setItem('pulsegrid_vault_encrypted', cipherPayload);
+
+        const authenticatedUser: AuthUser = {
+          username: newAccount.username,
+          tag: newAccount.tag,
+          email: newAccount.email,
+          isGuest: false
+        };
+
+        if (rememberMe) {
+          localStorage.setItem('pulsegrid_user', encryptVault(authenticatedUser));
+        }
+
+        onLogin(authenticatedUser);
+      } else {
+        // --- SIGN IN LOGIC ---
+        const foundAccount = accounts.find(acc => acc.email === cleanEmail);
+
+        if (!foundAccount) {
+          setErrorMsg('No account found with this email. Please click "Create Account" first to register.');
+          setIsProcessing(false);
+          return;
+        }
+
+        if (foundAccount.passwordHash !== enteredPasswordHash) {
+          setErrorMsg('Incorrect password. Please check your credentials and try again.');
+          setIsProcessing(false);
+          return;
+        }
+
+        // Valid Encrypted Credentials Verified!
+        const authenticatedUser: AuthUser = {
+          username: foundAccount.username,
+          tag: foundAccount.tag,
+          email: foundAccount.email,
+          isGuest: false
+        };
+
+        if (rememberMe) {
+          localStorage.setItem('pulsegrid_user', encryptVault(authenticatedUser));
+        }
+
+        onLogin(authenticatedUser);
+      }
+    } catch {
+      setErrorMsg('Authentication error. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleGuestLogin = () => {

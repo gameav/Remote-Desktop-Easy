@@ -32,10 +32,11 @@ export const ParsecComputers: React.FC<ParsecComputersProps> = ({
   const [peerInput, setPeerInput] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const thisComputerLink = 'https://pulsegrid.app/g/3l8x9k';
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://pulsegrid.app';
+  const thisComputerLink = `${currentOrigin}/?join=3l8x9k`;
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(thisComputerLink);
+  const handleCopyLink = (urlToCopy?: string) => {
+    navigator.clipboard.writeText(urlToCopy || thisComputerLink);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -112,7 +113,7 @@ export const ParsecComputers: React.FC<ParsecComputersProps> = ({
               <div className="w-full bg-[#16171d] border border-[#35394a] rounded px-2 py-1.5 flex items-center justify-between text-[11px] font-mono text-slate-300">
                 <span className="truncate max-w-[130px]">{computer.shareUrl}</span>
                 <button
-                  onClick={handleCopyLink}
+                  onClick={() => handleCopyLink(computer.shareUrl)}
                   className="text-rose-400 hover:text-rose-300 p-0.5 cursor-pointer"
                   title="Copy share link"
                 >
