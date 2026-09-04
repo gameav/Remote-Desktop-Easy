@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PulseGridSettings, SettingsSubTab } from '../types';
+import { PulseGridSettings, SettingsSubTab, AuthUser } from '../types';
 import { 
   Settings, 
   Cpu, 
@@ -16,10 +16,16 @@ import {
   Flame,
   Check,
   Smartphone,
-  Tablet
+  Tablet,
+  LogOut
 } from 'lucide-react';
 
-export const ParsecSettings: React.FC = () => {
+interface ParsecSettingsProps {
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
+}
+
+export const ParsecSettings: React.FC<ParsecSettingsProps> = ({ currentUser, onLogout }) => {
   const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>('client');
   const [savedMessage, setSavedMessage] = useState(false);
 
@@ -199,16 +205,16 @@ export const ParsecSettings: React.FC = () => {
             {/* Account Card Left (2 cols) */}
             <div className="md:col-span-2 bg-[#1b1c22] border border-[#2a2c38] rounded-xl p-6 space-y-6 shadow-md text-xs">
               <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 rounded-2xl bg-[#2b2d3c] border border-slate-600 flex items-center justify-center font-black text-2xl text-slate-200">
-                  dash
+                <div className="w-16 h-16 rounded-2xl bg-[#2b2d3c] border border-slate-600 flex items-center justify-center font-black text-xl text-slate-200 uppercase">
+                  {currentUser?.username ? currentUser.username.slice(0, 4) : 'USER'}
                 </div>
                 <div>
                   <div className="text-xl font-bold text-white flex items-center space-x-2">
-                    <span>dashav100</span>
-                    <span className="text-slate-400 font-mono text-sm">#20273089</span>
+                    <span>{currentUser?.username || 'GuestUser'}</span>
+                    <span className="text-slate-400 font-mono text-sm">#{currentUser?.tag || '000000'}</span>
                   </div>
                   <div className="text-xs text-slate-400 font-mono mt-0.5">
-                    anayvoratutor@gmail.com
+                    {currentUser?.email || 'guest@pulsegrid.app'}
                   </div>
                   <div className="mt-2 inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-bold">
                     <ShieldCheck className="w-3.5 h-3.5" />
@@ -222,27 +228,31 @@ export const ParsecSettings: React.FC = () => {
 
                 <div className="flex items-center justify-between py-2 border-b border-[#232532]">
                   <div>
-                    <div className="font-bold text-slate-200">Profile Picture</div>
-                    <div className="text-[11px] text-slate-400">A nice identifier for your profile and friends.</div>
+                    <div className="font-bold text-slate-200">Username</div>
+                    <div className="text-[11px] text-slate-400">{currentUser?.username || 'GuestUser'}</div>
                   </div>
-                  <button className="text-blue-400 hover:text-blue-300 font-bold text-xs">Change</button>
+                  <button className="text-blue-400 hover:text-blue-300 font-bold text-xs">Edit</button>
                 </div>
 
                 <div className="flex items-center justify-between py-2 border-b border-[#232532]">
                   <div>
-                    <div className="font-bold text-slate-200">Username</div>
-                    <div className="text-[11px] text-slate-400">dashav100</div>
+                    <div className="font-bold text-slate-200">Email</div>
+                    <div className="text-[11px] text-slate-400">{currentUser?.email || 'guest@pulsegrid.app'}</div>
                   </div>
                   <button className="text-blue-400 hover:text-blue-300 font-bold text-xs">Edit</button>
                 </div>
 
-                <div className="flex items-center justify-between py-2">
-                  <div>
-                    <div className="font-bold text-slate-200">Email</div>
-                    <div className="text-[11px] text-slate-400">anayvoratutor@gmail.com</div>
+                {onLogout && (
+                  <div className="pt-2">
+                    <button
+                      onClick={onLogout}
+                      className="px-4 py-2 bg-rose-600/20 hover:bg-rose-600 border border-rose-500/40 text-rose-300 hover:text-white font-bold text-xs rounded transition-all cursor-pointer flex items-center space-x-2"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Sign Out of PulseGrid</span>
+                    </button>
                   </div>
-                  <button className="text-blue-400 hover:text-blue-300 font-bold text-xs">Edit</button>
-                </div>
+                )}
               </div>
             </div>
 

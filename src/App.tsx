@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { SidebarView, RemoteComputer, ArcadeLobby } from './types';
+import React, { useState, useEffect } from 'react';
+import { SidebarView, RemoteComputer, ArcadeLobby, AuthUser } from './types';
 import { Header } from './components/Header';
 import { ParsecComputers } from './components/ParsecComputers';
 import { ParsecArcade } from './components/ParsecArcade';
@@ -7,15 +7,33 @@ import { LiveSimulator } from './components/LiveSimulator';
 import { ParsecSettings } from './components/ParsecSettings';
 import { ParsecDownloads } from './components/ParsecDownloads';
 import { PulseGridWebViewer } from './components/PulseGridWebViewer';
+import { AuthScreen } from './components/AuthScreen';
 
 export default function App() {
   const [activeView, setActiveView] = useState<SidebarView>('computers');
   const [selectedComputer, setSelectedComputer] = useState<RemoteComputer | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('pulsegrid_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleLogin = (user: AuthUser) => {
+    setCurrentUser(user);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('pulsegrid_user');
+    setCurrentUser(null);
+  };
 
   const initialComputers: RemoteComputer[] = [
     {
       id: 'desktop-ikqdnup',
-      name: 'DESKTOP-IKQDNUP',
+      name: `${currentUser?.username?.toUpperCase() || 'MY'}-WORKSTATION`,
       os: 'windows',
       gpu: 'NVIDIA RTX 4090 (24GB VRAM)',
       resolution: '3840x2160',
@@ -108,8 +126,12 @@ export default function App() {
     setActiveView('stream');
   };
 
+  if (!currentUser) {
+    return <AuthScreen onLogin={handleLogin} />;
+  }
+
   return (
-    <Header activeView={activeView} setActiveView={setActiveView}>
+    <Header activeView={activeView} setActiveView={setActiveView} currentUser={currentUser} onLogout={handleLogout}>
       {activeView === 'computers' && (
         <ParsecComputers
           computers={initialComputers}
@@ -119,7 +141,7 @@ export default function App() {
       )}
 
       {activeView === 'settings' && (
-        <ParsecSettings />
+        <ParsecSettings currentUser={currentUser} onLogout={handleLogout} />
       )}
 
       {activeView === 'web_client' && (

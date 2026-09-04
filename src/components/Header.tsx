@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SidebarView } from '../types';
+import { SidebarView, AuthUser } from '../types';
 import { 
   Monitor, 
   Settings, 
@@ -23,17 +23,25 @@ import { downloadProjectZip } from '../utils/zipGenerator';
 interface DesktopLayoutHeaderProps {
   activeView: SidebarView;
   setActiveView: (view: SidebarView) => void;
+  currentUser: AuthUser | null;
+  onLogout: () => void;
   children: React.ReactNode;
 }
 
 export const Header: React.FC<DesktopLayoutHeaderProps> = ({ 
   activeView, 
   setActiveView, 
+  currentUser,
+  onLogout,
   children 
 }) => {
   const [showFriendsDrawer, setShowFriendsDrawer] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   const [showLogoutTooltip, setShowLogoutTooltip] = useState(false);
+
+  const userDisplayTag = currentUser 
+    ? `${currentUser.username}#${currentUser.tag}` 
+    : 'Guest#000000';
 
   return (
     <div className="min-h-screen bg-[#111217] text-slate-100 flex flex-col font-sans select-none overflow-x-hidden">
@@ -50,7 +58,7 @@ export const Header: React.FC<DesktopLayoutHeaderProps> = ({
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2 text-[11px] font-mono bg-black/20 px-2.5 py-0.5 rounded">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>dashav100#20273089</span>
+            <span>{userDisplayTag}</span>
           </div>
 
           {/* Native Window Controls matching Images */}
@@ -262,13 +270,22 @@ export const Header: React.FC<DesktopLayoutHeaderProps> = ({
 
         {/* 5. Logout Confirmation Tooltip matching Image 5 */}
         {showLogoutTooltip && (
-          <div className="absolute left-16 bottom-6 bg-rose-600 text-white font-bold text-xs px-3 py-2 rounded shadow-xl z-50 flex items-center space-x-3">
-            <span>Logged in as dashav100</span>
+          <div className="absolute left-16 bottom-6 bg-rose-600 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow-xl z-50 flex items-center space-x-3">
+            <span>Logged in as <strong className="font-mono">{userDisplayTag}</strong></span>
+            <button
+              onClick={() => {
+                setShowLogoutTooltip(false);
+                onLogout();
+              }}
+              className="bg-black/40 hover:bg-black/60 px-2.5 py-1 rounded text-xs text-white font-bold transition-all cursor-pointer"
+            >
+              Log Out
+            </button>
             <button
               onClick={() => setShowLogoutTooltip(false)}
-              className="bg-black/30 hover:bg-black/50 px-2 py-1 rounded text-[10px]"
+              className="text-white/80 hover:text-white text-[11px]"
             >
-              Close
+              Cancel
             </button>
           </div>
         )}

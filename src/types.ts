@@ -18,6 +18,13 @@ export type SettingsSubTab =
 
 export type ConnectMethod = 'app_pin' | 'web_link';
 
+export interface AuthUser {
+  username: string;
+  tag: string;
+  email: string;
+  isGuest?: boolean;
+}
+
 export interface RemoteComputer {
   id: string;
   name: string;
