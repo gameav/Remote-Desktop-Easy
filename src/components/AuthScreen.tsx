@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import { AuthUser } from '../types';
 import { hashPassword, encryptVault, decryptVault } from '../lib/security';
 import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  sendPasswordResetEmail,
+  updateProfile
+} from 'firebase/auth';
+import { auth } from '../lib/firebase';
+import { 
   Lock, 
   Mail, 
   User, 
@@ -12,7 +19,9 @@ import {
   Smartphone, 
   CheckCircle2,
   Sparkles,
-  Globe
+  Globe,
+  KeyRound,
+  Send
 } from 'lucide-react';
 
 interface AuthScreenProps {
@@ -129,15 +138,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
           return;
         }
 
-        const existingAccount = accounts.find(acc => acc.email === cleanEmail);
-        if (existingAccount) {
-          setErrorMsg('An account with this email already exists. Please click "Sign In".');
-          setIsProcessing(false);
-          return;
-        }
-
         const cleanUsername = username.trim() || cleanEmail.split('@')[0];
         const newTag = Math.floor(10000000 + Math.random() * 90000000).toString();
+
+        // 1. Register with Firebase Auth
+        try {
+          const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+          if (userCred.user) {
+            await updateProfile(userCred.user, { displayName: cleanUsername });
+          }
+        } catch (firebaseErr: any) {
+          // If user already exists in Firebase Auth, proceed or handle error
+          if (firebaseErr?.code === 'auth/email-already-in-use') {
+            setErrorMsg('An account with this email already exists in Firebase. Please click "Sign In".');
+            setIsProcessing(false);
+            return;
+          }
+        }
 
         const newAccount: EncryptedAccountRecord = {
           email: cleanEmail,
@@ -146,11 +163,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
           tag: newTag
         };
 
-        accounts.push(newAccount);
-
-        // Encrypt whole list with AES cipher before storing
-        const cipherPayload = encryptVault(accounts);
-        localStorage.setItem('pulsegrid_vault_encrypted', cipherPayload);
+        const existingLocal = accounts.find(acc => acc.email === cleanEmail);
+        if (!existingLocal) {
+          accounts.push(newAccount);
+          localStorage.setItem('pulsegrid_vault_encrypted', encryptVault(accounts));
+        }
 
         const authenticatedUser: AuthUser = {
           username: newAccount.username,
@@ -166,25 +183,46 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
         onLogin(authenticatedUser);
       } else {
         // --- SIGN IN LOGIC ---
+        let firebaseAuthSuccess = false;
+        let displayNameFromFb = '';
+
+        try {
+          const userCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+          if (userCred.user) {
+            firebaseAuthSuccess = true;
+            displayNameFromFb = userCred.user.displayName || '';
+          }
+        } catch (firebaseErr: any) {
+          // If wrong password in Firebase, raise error
+          if (firebaseErr?.code === 'auth/wrong-password' || firebaseErr?.code === 'auth/invalid-credential') {
+            setErrorMsg('Incorrect password. Please check your credentials and try again.');
+            setIsProcessing(false);
+            return;
+          }
+        }
+
         const foundAccount = accounts.find(acc => acc.email === cleanEmail);
 
-        if (!foundAccount) {
+        if (!firebaseAuthSuccess && !foundAccount) {
           setErrorMsg('No account found with this email. Please click "Create Account" first to register.');
           setIsProcessing(false);
           return;
         }
 
-        if (foundAccount.passwordHash !== enteredPasswordHash) {
+        if (!firebaseAuthSuccess && foundAccount && foundAccount.passwordHash !== enteredPasswordHash) {
           setErrorMsg('Incorrect password. Please check your credentials and try again.');
           setIsProcessing(false);
           return;
         }
 
-        // Valid Encrypted Credentials Verified!
+        // Valid Credentials Verified!
+        const resolvedUsername = displayNameFromFb || foundAccount?.username || cleanEmail.split('@')[0];
+        const resolvedTag = foundAccount?.tag || Math.floor(10000000 + Math.random() * 90000000).toString();
+
         const authenticatedUser: AuthUser = {
-          username: foundAccount.username,
-          tag: foundAccount.tag,
-          email: foundAccount.email,
+          username: resolvedUsername,
+          tag: resolvedTag,
+          email: cleanEmail,
           isGuest: false
         };
 
@@ -224,21 +262,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     }
 
     setIsProcessing(true);
+    let firebaseEmailSent = false;
+
+    try {
+      // 1. Trigger Firebase Auth Password Reset Email directly to user's email inbox!
+      await sendPasswordResetEmail(auth, cleanEmail);
+      firebaseEmailSent = true;
+    } catch (fbErr: any) {
+      console.warn('Firebase reset email trigger:', fbErr?.message);
+    }
+
     try {
       const accounts = await getRegisteredAccountsVault();
       const account = accounts.find(acc => acc.email === cleanEmail);
 
-      if (!account) {
-        setErrorMsg('No account found with this email address.');
-        setIsProcessing(false);
-        return;
-      }
-
-      // Generate 6-digit verification code
+      // Generate 6-digit backup code as well
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       setGeneratedCode(code);
       setResetStep(2);
-      setSuccessMsg(`Verification code dispatched to ${cleanEmail}!`);
+
+      if (firebaseEmailSent) {
+        setSuccessMsg(`An official Firebase password reset email has been sent directly to ${cleanEmail}! Check your inbox and spam folder.`);
+      } else if (account) {
+        setSuccessMsg(`Reset code generated for ${cleanEmail}! You can use the code below to reset your password.`);
+      } else {
+        setErrorMsg('No registered account found with this email address.');
+      }
     } catch {
       setErrorMsg('Failed to process password reset request.');
     } finally {
