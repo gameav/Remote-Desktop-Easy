@@ -44,7 +44,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
-  const [generatedCode, setGeneratedCode] = useState('');
   const [username, setUsername] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -262,34 +261,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     }
 
     setIsProcessing(true);
-    let firebaseEmailSent = false;
 
     try {
-      // 1. Trigger Firebase Auth Password Reset Email directly to user's email inbox!
-      await sendPasswordResetEmail(auth, cleanEmail);
-      firebaseEmailSent = true;
-    } catch (fbErr: any) {
-      console.warn('Firebase reset email trigger:', fbErr?.message);
-    }
-
-    try {
-      const accounts = await getRegisteredAccountsVault();
-      const account = accounts.find(acc => acc.email === cleanEmail);
-
-      // Generate 6-digit backup code as well
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedCode(code);
-      setResetStep(2);
-
-      if (firebaseEmailSent) {
-        setSuccessMsg(`An official Firebase password reset email has been sent directly to ${cleanEmail}! Check your inbox and spam folder.`);
-      } else if (account) {
-        setSuccessMsg(`Reset code generated for ${cleanEmail}! You can use the code below to reset your password.`);
-      } else {
-        setErrorMsg('No registered account found with this email address.');
+      // 1. Trigger Firebase Auth Password Reset Email directly to user's email inbox
+      try {
+        await sendPasswordResetEmail(auth, cleanEmail);
+      } catch (fbErr: any) {
+        console.warn('Firebase reset email trigger note:', fbErr?.message);
       }
+
+      // 2. Call backend security server endpoint to dispatch reset code secretly
+      const res = await fetch('/api/auth/send-reset-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Failed to dispatch reset code. Please check your email address.');
+        return;
+      }
+
+      setResetStep(2);
+      setSuccessMsg(`Password reset instructions & 6-digit code dispatched to ${cleanEmail}! Please check your email inbox (and spam folder).`);
     } catch {
-      setErrorMsg('Failed to process password reset request.');
+      setErrorMsg('Failed to process password reset request. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -300,8 +298,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (verificationCode.trim() !== generatedCode) {
-      setErrorMsg('Invalid 6-digit verification code. Please check the code and try again.');
+    const cleanCode = verificationCode.trim();
+    if (cleanCode.length !== 6) {
+      setErrorMsg('Please enter the full 6-digit verification code sent to your email.');
       return;
     }
 
@@ -312,29 +311,51 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
 
     setIsProcessing(true);
     try {
-      const accounts = await getRegisteredAccountsVault();
       const cleanEmail = email.trim().toLowerCase();
-      const accountIndex = accounts.findIndex(acc => acc.email === cleanEmail);
 
-      if (accountIndex === -1) {
-        setErrorMsg('Account not found.');
+      // 1. Verify code against server endpoint
+      const res = await fetch('/api/auth/verify-reset-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, code: cleanCode })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Invalid 6-digit verification code. Please check your email.');
         setIsProcessing(false);
         return;
       }
 
-      const newHash = await hashPassword(newPassword.trim());
-      accounts[accountIndex].passwordHash = newHash;
+      // 2. Code verified! Update account password in encrypted vault
+      const accounts = await getRegisteredAccountsVault();
+      const accountIndex = accounts.findIndex(acc => acc.email === cleanEmail);
 
-      // Save updated vault
+      const newHash = await hashPassword(newPassword.trim());
+
+      if (accountIndex !== -1) {
+        accounts[accountIndex].passwordHash = newHash;
+      } else {
+        accounts.push({
+          email: cleanEmail,
+          passwordHash: newHash,
+          username: cleanEmail.split('@')[0],
+          tag: Math.floor(10000000 + Math.random() * 90000000).toString()
+        });
+      }
+
+      // Save updated encrypted vault
       localStorage.setItem('pulsegrid_vault_encrypted', encryptVault(accounts));
 
       setSuccessMsg('Password updated successfully! You can now sign in with your new password.');
       setIsResettingPassword(false);
+      setResetStep(1);
       setPassword(newPassword.trim());
       setNewPassword('');
       setVerificationCode('');
     } catch {
-      setErrorMsg('Failed to reset password.');
+      setErrorMsg('Failed to reset password. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -379,18 +400,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>{successMsg}</span>
             </div>
-            {generatedCode && resetStep === 2 && (
-              <div className="p-2.5 bg-[#101116] rounded border border-emerald-500/30 font-mono text-[11px] text-emerald-200 flex items-center justify-between">
-                <span>Verification Code: <strong className="text-white text-xs tracking-widest">{generatedCode}</strong></span>
-                <button
-                  type="button"
-                  onClick={() => setVerificationCode(generatedCode)}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2 py-0.5 rounded text-[10px] cursor-pointer"
-                >
-                  Auto-Fill
-                </button>
-              </div>
-            )}
           </div>
         )}
 

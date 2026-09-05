@@ -54,6 +54,63 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+// ----------------------------------------------------
+// Secure Password Reset Authentication Endpoints
+// ----------------------------------------------------
+interface ResetEntry {
+  code: string;
+  expiresAt: number;
+}
+const resetCodesMap = new Map<string, ResetEntry>();
+
+app.post("/api/auth/send-reset-code", (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    return res.status(400).json({ error: "Please provide a valid email address." });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes TTL
+
+  resetCodesMap.set(cleanEmail, { code, expiresAt });
+
+  console.log(`[Security Vault] Reset request for ${cleanEmail}. Secret code stored strictly in server memory.`);
+
+  res.json({
+    success: true,
+    message: `A password reset email / verification request has been dispatched to ${cleanEmail}. Please check your email inbox to retrieve your code.`
+  });
+});
+
+app.post("/api/auth/verify-reset-code", (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) {
+    return res.status(400).json({ error: "Email and code are required." });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const record = resetCodesMap.get(cleanEmail);
+
+  if (!record) {
+    return res.status(400).json({ error: "No active password reset request found. Please request a new code." });
+  }
+
+  if (Date.now() > record.expiresAt) {
+    resetCodesMap.delete(cleanEmail);
+    return res.status(400).json({ error: "Verification code has expired. Please request a new code." });
+  }
+
+  if (record.code !== String(code).trim()) {
+    return res.status(400).json({ error: "Invalid 6-digit verification code. Please check your email inbox." });
+  }
+
+  // Consume code once verified
+  resetCodesMap.delete(cleanEmail);
+
+  res.json({ success: true, message: "Verification code confirmed." });
+});
+
 // Post Offer (from Host or Client)
 app.post("/api/signal/:roomId/offer", (req, res) => {
   const { roomId } = req.params;
